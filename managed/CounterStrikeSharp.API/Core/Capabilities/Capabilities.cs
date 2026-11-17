@@ -4,22 +4,27 @@ public static class Capabilities
 {
     public static void RegisterPluginCapability<T>(PluginCapability<T> capability, Func<T> supplier)
     {
-        if (!PluginCapability<T>.Providers.ContainsKey(capability.Name))
+        lock (CapabilityOwnership.Sync)
         {
-            PluginCapability<T>.Providers.Add(capability.Name, new());
+            if (!PluginCapability<T>.Providers.TryGetValue(capability.Name, out var providers))
+                PluginCapability<T>.Providers.Add(capability.Name, providers = new());
+            // Each registration has its own identity, even for the same supplier.
+            Func<T> registration = () => supplier();
+            CapabilityOwnership.Register(supplier, () => providers.Add(registration),
+                () => providers.Remove(registration));
         }
-
-        PluginCapability<T>.Providers[capability.Name].Add(supplier);
     }
 
     public static void RegisterPlayerCapability<T>(PlayerCapability<T> capability,
         Func<CCSPlayerController, T> supplier)
     {
-        if (!PlayerCapability<T>.Providers.ContainsKey(capability.Name))
+        lock (CapabilityOwnership.Sync)
         {
-            PlayerCapability<T>.Providers.Add(capability.Name, new());
+            if (!PlayerCapability<T>.Providers.TryGetValue(capability.Name, out var providers))
+                PlayerCapability<T>.Providers.Add(capability.Name, providers = new());
+            Func<CCSPlayerController, T> registration = player => supplier(player);
+            CapabilityOwnership.Register(supplier, () => providers.Add(registration),
+                () => providers.Remove(registration));
         }
-
-        PlayerCapability<T>.Providers[capability.Name].Add(supplier);
     }
 }

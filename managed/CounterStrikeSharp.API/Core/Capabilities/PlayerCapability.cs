@@ -14,11 +14,9 @@ public sealed class PlayerCapability<T>
 
     public T? Get(CCSPlayerController entity)
     {
-        foreach (var provider in Providers[Name])
-        {
-            return provider(entity);
-        }
-
-        return default;
+        Func<CCSPlayerController, T>? provider;
+        lock (CapabilityOwnership.Sync)
+            provider = Providers[Name].FirstOrDefault();
+        return provider != null ? provider(entity) : default;
     }
 }

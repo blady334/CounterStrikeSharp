@@ -14,11 +14,10 @@ public sealed class PluginCapability<T>
 
     public T? Get()
     {
-        foreach (var provider in Providers[Name])
-        {
-            return provider();
-        }
-
-        return default;
+        Func<T>? provider;
+        lock (CapabilityOwnership.Sync)
+            provider = Providers[Name].FirstOrDefault();
+        // Plugin code must run outside the registry lock.
+        return provider != null ? provider() : default;
     }
 }

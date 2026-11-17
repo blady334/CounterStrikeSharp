@@ -16,6 +16,7 @@
 
 using System.Linq;
 using System.Reflection;
+using System.Runtime.Loader;
 using System.Threading.Tasks;
 using CounterStrikeSharp.API.Core.Attributes;
 using CounterStrikeSharp.API.Core.Capabilities;
@@ -58,6 +59,7 @@ namespace CounterStrikeSharp.API.Core.Plugin
         private readonly FileSystemWatcher _fileWatcher;
         private readonly IServiceProvider _applicationServiceProvider;
         private bool _assemblyLoaded;
+        private AssemblyLoadContext? _capabilityContext;
 
         public string FilePath => _path;
         private IServiceScope _serviceScope;
@@ -141,6 +143,20 @@ namespace CounterStrikeSharp.API.Core.Plugin
 
         public void Load(bool hotReload = false)
         {
+            try
+            {
+                LoadInternal(hotReload);
+            }
+            catch
+            {
+                // Includes failures during construction/configuration, before Plugin.Load.
+                CapabilityOwnership.Release(_capabilityContext);
+                throw;
+            }
+        }
+
+        private void LoadInternal(bool hotReload)
+        {
             if (State == PluginState.Loaded) return;
 
             // A load context can only load the plugin assembly once, so a manual reload needs a fresh one.
@@ -153,7 +169,9 @@ namespace CounterStrikeSharp.API.Core.Plugin
 
             using (Loader.EnterContextualReflection())
             {
+                _capabilityContext = AssemblyLoadContext.CurrentContextualReflectionContext;
                 var defaultAssembly = Loader.LoadDefaultAssembly();
+                _capabilityContext = AssemblyLoadContext.GetLoadContext(defaultAssembly);
                 _assemblyLoaded = true;
 
                 Type pluginType = defaultAssembly.GetExportedTypes()
@@ -298,8 +316,15 @@ namespace CounterStrikeSharp.API.Core.Plugin
             }
             finally
             {
-                Plugin.Dispose();
-                _serviceScope.Dispose();
+                try
+                {
+                    try { Plugin.Dispose(); }
+                    finally { _serviceScope.Dispose(); }
+                }
+                finally
+                {
+                    CapabilityOwnership.Release(_capabilityContext);
+                }
             }
 
             _logger.LogInformation("Finished unloading plugin {Name}", cachedName);

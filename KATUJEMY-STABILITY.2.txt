@@ -1,0 +1,55 @@
+CounterStrikeSharp 1.0.380-katujemy-stability.2 — 2026-11-17
+
+Builds on stability.1 (734061d40c1f75666f0ab3620a97ee5789c6cb9e).
+The previous batch remains included. No new gameplay/menu API features.
+
+CAPABILITIES RELOAD (redesign of the problem reported in PR #1082)
+https://github.com/roflmuffin/CounterStrikeSharp/pull/1082
+Reviewed upstream head: 0d2de242e2f8e45ad8612a6a607217c81d306fcd
+The original patch is NOT merged. Existing two-argument registration APIs stay intact.
+Registrations are owned by the collectible AssemblyLoadContext of the supplier's
+method/target, with contextual reflection as the fallback for shared helpers during Load.
+Manual unload and failed Load remove that generation's exact typed registrations.
+AssemblyLoadContext.Unloading also cleans up. Another provider of the same name survives.
+Cleanup runs even if Plugin.Unload, Dispose or service-scope disposal throws.
+Late callbacks cannot register suppliers again after their owner was unloaded.
+Weak ownership records and cleared removal lists do not pin an unloaded context.
+Get snapshots the provider under a lock, then invokes user code outside that lock.
+An already running provider invocation is allowed to finish.
+As before, a capability name that has never been registered throws on Get; a name
+whose providers were removed returns default. Public API compatibility is preserved.
+Suppliers entirely in non-collectible shared assemblies, registered outside any
+plugin contextual-reflection scope, cannot be attributed to a plugin by this API.
+Use a supplier lambda declared in the owning plugin for those runtime registrations.
+
+FINDPICKERENTITY (PR #1009)
+https://github.com/roflmuffin/CounterStrikeSharp/pull/1009
+Reviewed upstream head: d674f856ef52f8693f807976fe207deeac92dd39
+Use IntPtr and IntPtr.Zero for the optional native filter in both OS branches.
+This is explicit pointer marshalling, NOT a demonstrated current crash fix:
+the current ToDataType already unwraps Nullable<T>, and ScriptContext zeroes a null slot.
+Linux audit of user-supplied libserver.so:
+SHA256 acc5c6c332e032c4bb2e063b267f870027e19590952570f249a0e0e06d65fc75
+CCSGameRules primary vtable address point 0x25c0a80, slot 26 -> 0x1994110.
+Entry preserves RDX (filter) in R13 and passes it to helper 0x1993d70.
+Helper tests R13 at 0x199407b and skips the filter callback when null.
+Linux trailing floating-point arguments and existing gamedata offsets are retained.
+No Windows engine binary audit or in-game picker execution was performed.
+
+VALIDATION
+51/51 .NET unit tests pass locally (8 new capability regression cases).
+All 8 new cases fail against the previous registration/unload implementation.
+Cases cover independent owners, both capability types, manual unload, reload,
+late registration, throwing unload/dispose and collectible supplier lifetime.
+Strict APICompat against the stability.1 API: no incompatible changes.
+In-game test plugin compiles; it has not been executed inside CS2 for this batch.
+Linux CI reruns tests, offline lifecycle checks and the full native build.
+No server deployment/restart is performed by the build workflow.
+
+INSTALL / DEV CHECK
+The update archive contains the native .so plus the complete managed API directory.
+Stop the server, back up both, unpack into game/csgo, then start the server.
+Keep existing configuration, plugins, .NET 10 runtime and current gamedata.
+On DEV reload a capability provider and exercise the dependent plugin again.
+Check normal map changes and existing Panorama menus, including !skins.
+The user's tentative successful smoke test applies to stability.1, not this build.

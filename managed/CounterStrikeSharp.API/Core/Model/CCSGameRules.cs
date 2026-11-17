@@ -41,17 +41,19 @@ public partial class CCSGameRules
 
     internal CBaseEntity? FindPickerEntityInternal(CBasePlayerController player)
     {
-        // TODO: TEST!
-        // the third parameter seems to be something like `CDefaultTypedEntityInstanceFilter<CBaseEntity>` but its optional (earlier it was a string?)
+        // The optional native entity filter is a pointer. Pass a pointer-sized zero
+        // explicitly rather than a boxed nullable value (upstream PR #1009).
         if (IsWindows.Value)
         {
-            VirtualFunctionWithReturn<CCSGameRules, CBasePlayerController, IntPtr?, CBaseEntity?> CCSGameRules_FindPickerEntity = new(Handle, GameData.GetOffset("CCSGameRules_FindPickerEntity"));
-            return CCSGameRules_FindPickerEntity.Invoke(this, player, null);
+            VirtualFunctionWithReturn<CCSGameRules, CBasePlayerController, IntPtr, CBaseEntity?> CCSGameRules_FindPickerEntity = new(Handle, GameData.GetOffset("CCSGameRules_FindPickerEntity"));
+            return CCSGameRules_FindPickerEntity.Invoke(this, player, IntPtr.Zero);
         }
         else
         {
-            VirtualFunctionWithReturn<CCSGameRules, CBasePlayerController, IntPtr?, double, double, CBaseEntity?> CCSGameRules_FindPickerEntity = new(Handle, GameData.GetOffset("CCSGameRules_FindPickerEntity"));
-            return CCSGameRules_FindPickerEntity.Invoke(this, player, null, 0, 0); // on linux we have a fourth and fifth parameter aswell, but they are unused because the condition for them is always unmet.
+            VirtualFunctionWithReturn<CCSGameRules, CBasePlayerController, IntPtr, double, double, CBaseEntity?> CCSGameRules_FindPickerEntity = new(Handle, GameData.GetOffset("CCSGameRules_FindPickerEntity"));
+            // Preserve the existing Linux call shape; current engine code does not
+            // consume the trailing floating-point arguments on this path.
+            return CCSGameRules_FindPickerEntity.Invoke(this, player, IntPtr.Zero, 0, 0);
         }
     }
 
