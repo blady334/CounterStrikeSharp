@@ -93,13 +93,14 @@ namespace CounterStrikeSharp.API.Core
 
             private readonly InputArgument _inputArgument;
             private readonly Action _dispose;
+            private bool _disposed;
 
             public CallbackSubscriber(Delegate underlyingMethod, Delegate wrapperMethod, Action dispose)
             {
                 _dispose = dispose;
                 _underlyingMethod = underlyingMethod;
 
-                var functionReference = FunctionReference.Create(wrapperMethod);
+                var functionReference = FunctionReference.CreateUnique(wrapperMethod);
                 _inputArgument = (InputArgument)functionReference;
 
                 _functionReferenceIdentifier = functionReference.Identifier;
@@ -117,7 +118,9 @@ namespace CounterStrikeSharp.API.Core
 
             public void Dispose()
             {
+                if (_disposed) return;
                 _dispose();
+                _disposed = true;
             }
         }
 

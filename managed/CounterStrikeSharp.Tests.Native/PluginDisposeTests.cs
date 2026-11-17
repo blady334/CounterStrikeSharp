@@ -8,6 +8,35 @@ namespace NativeTestsPlugin;
 
 public class PluginDisposeTests
 {
+    [Fact]
+    public async Task RemovingPreEventHandlerKeepsPostHandlerAliveAcrossGC()
+    {
+        var calls = 0;
+        HookResult Handler(EventShowSurvivalRespawnStatus @event, GameEventInfo info)
+        {
+            calls++;
+            return HookResult.Continue;
+        }
+
+        var plugin = new ThrowawayPlugin();
+        try
+        {
+            plugin.RegisterEventHandler<EventShowSurvivalRespawnStatus>(Handler, HookMode.Pre);
+            plugin.RegisterEventHandler<EventShowSurvivalRespawnStatus>(Handler, HookMode.Post);
+            plugin.DeregisterEventHandler<EventShowSurvivalRespawnStatus>(Handler, HookMode.Pre);
+            System.GC.Collect();
+            System.GC.WaitForPendingFinalizers();
+            System.GC.Collect();
+            new EventShowSurvivalRespawnStatus(true).FireEvent(true);
+            await WaitOneFrame();
+            Assert.Equal(1, calls);
+        }
+        finally
+        {
+            plugin.Dispose();
+        }
+    }
+
     private class ThrowawayPlugin : BasePlugin
     {
         public override string ModuleName => "Throwaway";

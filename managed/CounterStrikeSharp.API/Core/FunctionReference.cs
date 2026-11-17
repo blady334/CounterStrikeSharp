@@ -143,13 +143,23 @@ namespace CounterStrikeSharp.API.Core
         }
 
 
-        private static int Register(FunctionReference reference)
+        // Each native subscription owns its callback independently, even when
+        // the same managed handler is registered for several events or modes.
+        internal static FunctionReference CreateUnique(Delegate method)
+        {
+            var reference = new FunctionReference(method, FunctionLifetime.Permanent);
+            reference.Identifier = Register(reference, cacheByTarget: false);
+            return reference;
+        }
+
+        private static int Register(FunctionReference reference, bool cacheByTarget = true)
         {
             lock (ReferenceCounterLock)
             {
                 var thisRefId = _referenceCounter;
                 IdToFunctionReferencesMap[thisRefId] = reference;
-                TargetMethodToFunctionReferencesMap[reference._targetMethod] = reference;
+                if (cacheByTarget)
+                    TargetMethodToFunctionReferencesMap[reference._targetMethod] = reference;
 
                 unchecked
                 {
@@ -169,14 +179,11 @@ namespace CounterStrikeSharp.API.Core
 
         public static void Remove(int reference)
         {
-            if (IdToFunctionReferencesMap.TryGetValue(reference, out var functionReference))
+            if (IdToFunctionReferencesMap.TryRemove(reference, out var functionReference))
             {
-                if (TargetMethodToFunctionReferencesMap.ContainsKey(functionReference._targetMethod))
-                {
-                    TargetMethodToFunctionReferencesMap.Remove(functionReference._targetMethod, out _);
-                }
-
-                IdToFunctionReferencesMap.Remove(reference, out _);
+                // Do not evict another subscription/reference for the same target.
+                ((ICollection<KeyValuePair<Delegate, FunctionReference>>)TargetMethodToFunctionReferencesMap)
+                    .Remove(new(functionReference._targetMethod, functionReference));
 
                 Application.Instance.Logger.LogDebug("Removing function/callback reference: {Reference}", reference);
             }
