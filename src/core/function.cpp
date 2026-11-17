@@ -253,13 +253,13 @@ KHook::Action ValveFunction::DispatchHook(bool post, DynamicHookContext& hook)
     if (post && KHook::WasOriginalFunctionSkipped()) return KHook::Action::Ignore;
 
     auto* callback = post ? m_postcallback : m_precallback;
+    auto functions = callback ? callback->GetFunctions() : ScriptCallback::Snapshot{};
     auto nativeCallback = m_callback;
     HookResult result = HookResult::Continue;
     if (nativeCallback) result = (*nativeCallback)(post ? HookMode::Post : HookMode::Pre, hook);
 
     // Each invocation owns its script context. Nested calls must not reset the
     // outer callback's argument and result buffers.
-    auto functions = callback ? callback->GetFunctions() : std::vector<CallbackT>{};
     for (auto function : functions)
     {
         if (result >= HookResult::Stop) break;

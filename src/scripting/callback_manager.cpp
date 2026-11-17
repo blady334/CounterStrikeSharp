@@ -32,13 +32,34 @@ ScriptCallback::ScriptCallback(const char* szName) : m_root_context(fxNativeCont
 
 ScriptCallback::~ScriptCallback() { m_functions.clear(); }
 
-void ScriptCallback::AddListener(CallbackT fnPluginFunction) { m_functions.push_back(fnPluginFunction); }
+void ScriptCallback::AddListener(CallbackT fnPluginFunction)
+{
+    if (fnPluginFunction) m_functions.push_back(std::make_shared<ListenerState>(ListenerState{fnPluginFunction}));
+}
 
 bool ScriptCallback::RemoveListener(CallbackT fnPluginFunction)
 {
     size_t nOriginalSize = m_functions.size();
-    m_functions.erase(std::ranges::remove(m_functions, fnPluginFunction).begin(), m_functions.end());
+    std::erase_if(m_functions, [fnPluginFunction](const auto& listener) {
+        if (listener->function != fnPluginFunction) return false;
+        listener->function = nullptr;
+        return true;
+    });
     return m_functions.size() != nOriginalSize;
+}
+
+void ScriptCallback::RemoveAllListeners()
+{
+    for (const auto& listener : m_functions) listener->function = nullptr;
+    m_functions.clear();
+}
+
+ScriptCallback::Snapshot ScriptCallback::GetFunctions()
+{
+    Snapshot snapshot{shared_from_this(), {}};
+    snapshot.listeners.reserve(m_functions.size());
+    for (const auto& listener : m_functions) snapshot.listeners.emplace_back(listener);
+    return snapshot;
 }
 
 bool ScriptCallback::IsContextSafe()
@@ -67,31 +88,35 @@ void ScriptCallback::Execute(bool bResetContext)
 
     VPROF_BUDGET("CS#::ScriptCallback::Execute", "CS# Script Callbacks");
 
-    for (size_t nI = 0; nI < m_functions.size(); ++nI)
+    auto functions = GetFunctions();
+    // A nested call prepares m_root_context again. The current dispatch owns a
+    // separate buffer so its arguments survive nested calls and callback removal.
+    fxNativeContext invocation = m_root_context;
+    ScriptContextRaw context(invocation);
+    size_t nI = 0;
+    for (const auto& fnMethodToCall : functions)
     {
-        if (auto fnMethodToCall = m_functions[nI])
+        if (fnMethodToCall)
         {
             try
             {
-                fnMethodToCall(&ScriptContextStruct());
+                fnMethodToCall(&invocation);
             }
             catch (...)
             {
-                ScriptContext().ThrowNativeError("Exception in callback execution");
+                if (!context.HasError()) context.ThrowNativeError("Exception in callback execution");
                 CSSHARP_CORE_ERROR("Exception thrown inside callback '{}', index {}", m_name, nI);
             }
         }
-        else
-        {
-            ScriptContext().ThrowNativeError("Null listener in callback");
-            CSSHARP_CORE_ERROR("Null function pointer in callback '{}', index {}", m_name, nI);
-        }
+        ++nI;
     }
 
     if (bResetContext)
     {
-        Reset();
+        context.Reset();
     }
+    m_root_context = invocation;
+    m_script_context_raw = ScriptContextRaw(m_root_context);
 }
 
 void ScriptCallback::Reset() { ScriptContext().Reset(); }
@@ -101,19 +126,19 @@ CallbackManager::CallbackManager() = default;
 ScriptCallback* CallbackManager::CreateCallback(const char* szName)
 {
     CSSHARP_CORE_TRACE("Creating callback {0}", szName);
-    auto* pCallback = new ScriptCallback(szName);
+    auto pCallback = std::make_shared<ScriptCallback>(szName);
     m_managed.push_back(pCallback);
 
-    return pCallback;
+    return pCallback.get();
 }
 
 ScriptCallback* CallbackManager::FindCallback(const char* szName)
 {
-    for (auto* pMarshal : m_managed)
+    for (const auto& pMarshal : m_managed)
     {
         if (strcmp(pMarshal->GetName().c_str(), szName) == 0)
         {
-            return pMarshal;
+            return pMarshal.get();
         }
     }
 
@@ -122,12 +147,12 @@ ScriptCallback* CallbackManager::FindCallback(const char* szName)
 
 void CallbackManager::ReleaseCallback(ScriptCallback* pCallback)
 {
-    auto I = std::ranges::remove_if(m_managed, [pCallback](const ScriptCallback* pI) {
-        return pCallback == pI;
-    }).begin();
-
-    if (I != m_managed.end()) m_managed.erase(I, m_managed.end());
-    delete pCallback;
+    auto found = std::find_if(m_managed.begin(), m_managed.end(), [pCallback](const auto& owned) {
+        return owned.get() == pCallback;
+    });
+    if (found == m_managed.end()) return;
+    (*found)->RemoveAllListeners();
+    m_managed.erase(found);
 }
 
 bool CallbackManager::TryAddFunction(const char* szName, CallbackT fnCallable)
@@ -154,7 +179,7 @@ bool CallbackManager::TryRemoveFunction(const char* szName, CallbackT fnCallable
 void CallbackManager::PrintCallbackDebug()
 {
     CSSHARP_CORE_INFO("----CALLBACKS----");
-    for (auto* pCallback : m_managed)
+    for (const auto& pCallback : m_managed)
     {
         CSSHARP_CORE_INFO("{0} ({0})\n", pCallback->GetName().c_str(), 1);
     }

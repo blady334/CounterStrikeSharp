@@ -59,6 +59,23 @@ namespace CounterStrikeSharp.API.Core
 
     public class ScriptContext
     {
+        private const int MaxArguments = 32;
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static unsafe void CheckWriteSlot(fxScriptContext* context)
+        {
+            if (context == null) throw new ArgumentNullException(nameof(context));
+            if ((uint)context->numArguments >= MaxArguments)
+                throw new InvalidOperationException("Native calls support at most 32 arguments. Reset the context before reusing it.");
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static void CheckValueSize(int size)
+        {
+            if ((uint)size > sizeof(ulong))
+                throw new NotSupportedException("Native argument and result slots hold at most 8 bytes; pass larger values by pointer.");
+        }
+
         [ThreadStatic] private static ScriptContext _globalScriptContext;
 
         public static ScriptContext GlobalScriptContext
@@ -264,11 +281,7 @@ namespace CounterStrikeSharp.API.Core
                 return;
             }
 
-            if (Marshal.SizeOf(arg.GetType()) <= 8)
-            {
-                PushUnsafe(context, arg);
-            }
-
+            PushUnsafe(context, arg);
             context->numArguments++;
         }
 
@@ -299,15 +312,14 @@ namespace CounterStrikeSharp.API.Core
                 return;
             }
 
-            if (Marshal.SizeOf(arg.GetType()) <= 8)
-            {
-                SetResultUnsafe(context, arg);
-            }
+            SetResultUnsafe(context, arg);
         }
 
         [SecurityCritical]
         internal unsafe void PushUnsafe(fxScriptContext* cxt, object arg)
         {
+            CheckWriteSlot(cxt);
+            CheckValueSize(Marshal.SizeOf(arg.GetType()));
             *(long*)(&cxt->functionData[8 * cxt->numArguments]) = 0;
             Marshal.StructureToPtr(arg, new IntPtr(cxt->functionData + (8 * cxt->numArguments)), true);
         }
@@ -319,8 +331,10 @@ namespace CounterStrikeSharp.API.Core
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public unsafe void PushPrimitive<T>(T value) where T : unmanaged
         {
+            CheckValueSize(sizeof(T));
             fixed (fxScriptContext* cxt = &m_extContext)
             {
+                CheckWriteSlot(cxt);
                 *(long*)(&cxt->functionData[8 * cxt->numArguments]) = 0;
                 *(T*)(&cxt->functionData[8 * cxt->numArguments]) = value;
                 cxt->numArguments++;
@@ -330,6 +344,8 @@ namespace CounterStrikeSharp.API.Core
         [SecurityCritical]
         internal unsafe void SetResultUnsafe(fxScriptContext* cxt, object arg)
         {
+            if (cxt == null) throw new ArgumentNullException(nameof(cxt));
+            CheckValueSize(Marshal.SizeOf(arg.GetType()));
             *(long*)(&cxt->result[0]) = 0;
             Marshal.StructureToPtr(arg, new IntPtr(cxt->result), true);
         }
@@ -346,6 +362,7 @@ namespace CounterStrikeSharp.API.Core
         [SecurityCritical]
         internal unsafe void PushString(fxScriptContext* cxt, string str)
         {
+            CheckWriteSlot(cxt);
             if (str == null)
             {
                 *(IntPtr*)(&cxt->functionData[8 * cxt->numArguments]) = IntPtr.Zero;
@@ -369,6 +386,7 @@ namespace CounterStrikeSharp.API.Core
         [SecurityCritical]
         internal unsafe void SetResultString(fxScriptContext* cxt, string str)
         {
+            if (cxt == null) throw new ArgumentNullException(nameof(cxt));
             if (str == null)
             {
                 *(IntPtr*)(&cxt->result[0]) = IntPtr.Zero;
@@ -383,7 +401,7 @@ namespace CounterStrikeSharp.API.Core
             dest[written] = 0;
 
             LazyInitializer.EnsureInitialized(ref ms_finalizers, static () => new ConcurrentQueue<IntPtr>()).Enqueue(ptr);
-            *(IntPtr*)(&cxt->result[8]) = ptr;
+            *(IntPtr*)(&cxt->result[0]) = ptr;
         }
 
         [SecuritySafeCritical]
@@ -416,6 +434,11 @@ namespace CounterStrikeSharp.API.Core
         [SecurityCritical]
         private unsafe object GetArgumentHelper(fxScriptContext* context, Type type, int index)
         {
+            if (context == null) throw new ArgumentNullException(nameof(context));
+            if ((uint)context->numArguments > MaxArguments)
+                throw new InvalidOperationException("Invalid native argument count.");
+            if ((uint)index >= (uint)context->numArguments)
+                throw new ArgumentOutOfRangeException(nameof(index), "Argument was not supplied to this native call.");
             return GetResult(type, &context->functionData[index * 8]);
         }
 
@@ -534,6 +557,7 @@ namespace CounterStrikeSharp.API.Core
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public unsafe T GetResultPrimitive<T>() where T : unmanaged
         {
+            CheckValueSize(sizeof(T));
             fixed (fxScriptContext* cxt = &m_extContext)
             {
                 return *(T*)(&cxt->result[0]);

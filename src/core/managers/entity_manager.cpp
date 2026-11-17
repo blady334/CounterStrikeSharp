@@ -268,16 +268,16 @@ bool EntityManager::Hook_OnTakeDamage_Alive_Pre(CBaseEntity* entity, CTakeDamage
     HookResult result = HookResult::Continue;
     if (cb_entity && cb_entity->GetFunctionCount())
     {
-        cb_entity->ScriptContext().Reset();
-        cb_entity->ScriptContext().Push(entity);
-        cb_entity->ScriptContext().Push(info);
-
         for (auto fnMethodToCall : cb_entity->GetFunctions())
         {
             if (!fnMethodToCall) continue;
-            fnMethodToCall(&cb_entity->ScriptContextStruct());
+            fxNativeContext raw{};
+            ScriptContextRaw context(raw);
+            context.Push(entity);
+            context.Push(info);
+            fnMethodToCall(&raw);
 
-            auto hookResult = cb_entity->ScriptContext().GetResult<HookResult>();
+            auto hookResult = context.GetResult<HookResult>();
 
             if (hookResult >= HookResult::Stop)
             {
@@ -294,16 +294,16 @@ bool EntityManager::Hook_OnTakeDamage_Alive_Pre(CBaseEntity* entity, CTakeDamage
     auto* cb_player = globals::entityManager.on_player_take_damage_pre_callback;
     if (entity->IsPawn() && cb_player && cb_player->GetFunctionCount())
     {
-        cb_player->ScriptContext().Reset();
-        cb_player->ScriptContext().Push(entity);
-        cb_player->ScriptContext().Push(info);
-
         for (auto fnMethodToCall : cb_player->GetFunctions())
         {
             if (!fnMethodToCall) continue;
-            fnMethodToCall(&cb_player->ScriptContextStruct());
+            fxNativeContext raw{};
+            ScriptContextRaw context(raw);
+            context.Push(entity);
+            context.Push(info);
+            fnMethodToCall(&raw);
 
-            auto hookResult = cb_player->ScriptContext().GetResult<HookResult>();
+            auto hookResult = context.GetResult<HookResult>();
 
             if (hookResult >= HookResult::Stop)
             {
@@ -392,20 +392,20 @@ KHook::Return<void> DetourFireOutputInternal(CEntityIOOutput* const pThis,
     {
         if (pCallbackPair->pre->GetFunctionCount())
         {
-            pCallbackPair->pre->ScriptContext().Reset();
-            pCallbackPair->pre->ScriptContext().Push(pThis);
-            pCallbackPair->pre->ScriptContext().Push(pThis->m_pDesc->m_pName);
-            pCallbackPair->pre->ScriptContext().Push(pActivator);
-            pCallbackPair->pre->ScriptContext().Push(pCaller);
-            pCallbackPair->pre->ScriptContext().Push(value);
-            pCallbackPair->pre->ScriptContext().Push(flDelay);
-
             for (auto fnMethodToCall : pCallbackPair->pre->GetFunctions())
             {
                 if (!fnMethodToCall) continue;
-                fnMethodToCall(&pCallbackPair->pre->ScriptContextStruct());
+                fxNativeContext raw{};
+                ScriptContextRaw context(raw);
+                context.Push(pThis);
+                context.Push(pThis->m_pDesc->m_pName);
+                context.Push(pActivator);
+                context.Push(pCaller);
+                context.Push(value);
+                context.Push(flDelay);
+                fnMethodToCall(&raw);
 
-                auto thisResult = pCallbackPair->pre->ScriptContext().GetResult<HookResult>();
+                auto thisResult = context.GetResult<HookResult>();
 
                 if (thisResult >= HookResult::Stop)
                 {

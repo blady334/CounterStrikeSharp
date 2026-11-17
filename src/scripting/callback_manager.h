@@ -17,6 +17,7 @@
 #pragma once
 
 #include <vector>
+#include <memory>
 
 #include "core/global_listener.h"
 #include "core/globals.h"
@@ -24,9 +25,32 @@
 
 namespace counterstrikesharp {
 
-class ScriptCallback
+class ScriptCallback : public std::enable_shared_from_this<ScriptCallback>
 {
+    struct ListenerState { CallbackT function; };
+
   public:
+    // Snapshots keep the callback alive, but removal invalidates registrations
+    // immediately. Re-adding the same function creates a different registration.
+    class Listener
+    {
+      public:
+        explicit Listener(std::shared_ptr<ListenerState> state) : m_state(std::move(state)) {}
+        explicit operator bool() const { return m_state->function != nullptr; }
+        void operator()(fxNativeContext* context) const
+        {
+            if (auto function = m_state->function) function(context);
+        }
+      private:
+        std::shared_ptr<ListenerState> m_state;
+    };
+    struct Snapshot
+    {
+        std::shared_ptr<ScriptCallback> owner;
+        std::vector<Listener> listeners;
+        auto begin() const { return listeners.begin(); }
+        auto end() const { return listeners.end(); }
+    };
     ScriptCallback(const char* szName);
     ~ScriptCallback();
     void AddListener(CallbackT fnPluginFunction);
@@ -34,7 +58,8 @@ class ScriptCallback
     bool IsContextSafe();
     std::string GetName() { return m_name; }
     unsigned int GetFunctionCount() const { return m_functions.size(); }
-    std::vector<CallbackT> GetFunctions() { return m_functions; }
+    Snapshot GetFunctions();
+    void RemoveAllListeners();
 
     void Execute(bool bResetContext = true);
     void Reset();
@@ -42,7 +67,7 @@ class ScriptCallback
     fxNativeContext& ScriptContextStruct() { return m_root_context; }
 
   private:
-    std::vector<CallbackT> m_functions;
+    std::vector<std::shared_ptr<ListenerState>> m_functions;
     std::string m_name;
     std::string m_profile_name;
     ScriptContextRaw m_script_context_raw;
@@ -62,7 +87,7 @@ class CallbackManager : public GlobalClass
     void PrintCallbackDebug();
 
   private:
-    std::vector<ScriptCallback*> m_managed;
+    std::vector<std::shared_ptr<ScriptCallback>> m_managed;
 };
 
 class CallbackPair
@@ -73,8 +98,8 @@ class CallbackPair
     ~CallbackPair();
     bool HasCallbacks() const { return pre->GetFunctionCount() > 0 || post->GetFunctionCount() > 0; }
 
-    ScriptCallback* pre;
-    ScriptCallback* post;
+    ScriptCallback* pre = nullptr;
+    ScriptCallback* post = nullptr;
 };
 
 } // namespace counterstrikesharp

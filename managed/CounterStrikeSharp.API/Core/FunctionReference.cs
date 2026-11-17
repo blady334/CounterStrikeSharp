@@ -102,7 +102,7 @@ namespace CounterStrikeSharp.API.Core
                         return;
                     }
 
-                    var arguments = new object?[_parameterTypes.Length];
+                    var arguments = _parameterTypes.Length == 0 ? Array.Empty<object?>() : new object?[_parameterTypes.Length];
                     for (var i = 0; i < arguments.Length; i++)
                     {
                         arguments[i] = scriptContext.GetArgument(_parameterTypes[i], i);
@@ -122,7 +122,10 @@ namespace CounterStrikeSharp.API.Core
                         return;
                     }
 
-                    Application.Instance.Logger.LogError(e, "Error invoking callback");
+                    Application.Instance.Logger.LogError(e,
+                        "Error invoking callback {CallbackId}: assembly={Assembly}, method={DeclaringType}.{Method}",
+                        Identifier, _targetMethod.Method.Module.Assembly.GetName().Name,
+                        _targetMethod.Method.DeclaringType?.FullName, _targetMethod.Method.Name);
                 }
                 finally
                 {

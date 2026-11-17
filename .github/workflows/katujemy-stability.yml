@@ -9,7 +9,7 @@ permissions:
   contents: read
 
 env:
-  CANDIDATE_VERSION: 1.0.380-katujemy-stability.3
+  CANDIDATE_VERSION: 1.0.380-katujemy-stability.4
 
 jobs:
   managed:
@@ -49,6 +49,8 @@ jobs:
           submodules: recursive
       - name: Offline lifecycle checks
         run: python3 eng/test-startup-lifecycle.py --out build-lifecycle
+      - name: Callback and buffer safety (ASan + UBSan)
+        run: python3 eng/test-callback-safety.py --out build-callback-safety
       - name: Native build
         shell: bash
         run: |
@@ -73,12 +75,12 @@ jobs:
           manifest = {'commit': os.environ['GITHUB_SHA'], 'version': os.environ['CANDIDATE_VERSION'],
                       'live_game_tested': False, 'files': {str(p.relative_to(root)): hashlib.sha256(p.read_bytes()).hexdigest() for p in files}}
           pathlib.Path('candidate.json').write_text(json.dumps(manifest, indent=2))
-          with zipfile.ZipFile('CounterStrikeSharp-stability.3-linux-UPDATE.zip', 'w', zipfile.ZIP_DEFLATED) as z:
+          with zipfile.ZipFile('CounterStrikeSharp-stability.4-linux-UPDATE.zip', 'w', zipfile.ZIP_DEFLATED) as z:
               for p in files: z.write(p, p.relative_to(root))
           PY
       - uses: actions/upload-artifact@v4
         with:
-          name: CounterStrikeSharp-stability.3-linux-candidate
+          name: CounterStrikeSharp-stability.4-linux-candidate
           path: |
-            CounterStrikeSharp-stability.3-linux-UPDATE.zip
+            CounterStrikeSharp-stability.4-linux-UPDATE.zip
             candidate.json

@@ -399,16 +399,16 @@ HookResult ConCommandManager::ExecuteCommandCallbacks(
 
     if (globalCallback->GetFunctionCount() > 0)
     {
-        globalCallback->ScriptContext().Reset();
-        globalCallback->ScriptContext().Push(ctx.GetPlayerSlot().Get());
-        globalCallback->ScriptContext().Push(&args);
-
         for (auto fnMethodToCall : globalCallback->GetFunctions())
         {
             if (!fnMethodToCall) continue;
-            fnMethodToCall(&globalCallback->ScriptContextStruct());
+            fxNativeContext raw{};
+            ScriptContextRaw context(raw);
+            context.Push(ctx.GetPlayerSlot().Get());
+            context.Push(&args);
+            fnMethodToCall(&raw);
 
-            auto hookResult = globalCallback->ScriptContext().GetResult<HookResult>();
+            auto hookResult = context.GetResult<HookResult>();
 
             if (hookResult >= HookResult::Stop)
             {
@@ -436,16 +436,16 @@ HookResult ConCommandManager::ExecuteCommandCallbacks(
 
     auto pCallback = mode == HookMode::Pre ? pInfo->callback_pre : pInfo->callback_post;
 
-    pCallback->Reset();
-    pCallback->ScriptContext().Push(ctx.GetPlayerSlot().Get());
-    pCallback->ScriptContext().Push(&args);
-
     for (auto fnMethodToCall : pCallback->GetFunctions())
     {
         if (!fnMethodToCall) continue;
-        fnMethodToCall(&pCallback->ScriptContextStruct());
+        fxNativeContext raw{};
+        ScriptContextRaw context(raw);
+        context.Push(ctx.GetPlayerSlot().Get());
+        context.Push(&args);
+        fnMethodToCall(&raw);
 
-        auto thisResult = pCallback->ScriptContext().GetResult<HookResult>();
+        auto thisResult = context.GetResult<HookResult>();
 
         if (thisResult >= HookResult::Handled)
         {

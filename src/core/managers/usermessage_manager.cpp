@@ -163,15 +163,16 @@ KHook::Return<void> UserMessageManager::Hook_PostEvent(IGameEventSystem* hookThi
         if (pCallback)
         {
             CSSHARP_CORE_TRACE("Pushing user message `{}` pointer: {}, post: {}", iMessageID, (void*)pEvent, false);
-            pCallback->Reset();
-            pCallback->ScriptContext().Push(&message);
 
             for (auto fnMethodToCall : pCallback->GetFunctions())
             {
                 if (!fnMethodToCall) continue;
-                fnMethodToCall(&pCallback->ScriptContextStruct());
+                fxNativeContext raw{};
+                ScriptContextRaw context(raw);
+                context.Push(&message);
+                fnMethodToCall(&raw);
 
-                auto hookResult = pCallback->ScriptContext().GetResult<HookResult>();
+                auto hookResult = context.GetResult<HookResult>();
 
                 if (hookResult >= HookResult::Stop)
                 {

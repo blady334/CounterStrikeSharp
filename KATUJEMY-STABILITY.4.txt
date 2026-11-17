@@ -1,0 +1,66 @@
+CounterStrikeSharp 1.0.380-katujemy-stability.4 — 2026-11-17
+
+Base: stability.3, cbdccce07a9cf6439c1ebe1f9113d75ce37ea450.
+Own stability fixes; deferred gameplay/API feature PRs remain deferred.
+No live deployment or restart is automated.
+
+SCRIPT CONTEXT SAFETY
+- String results now write their pointer into result[0], not beyond result[8].
+- Managed primitive, boxed and string argument writes reject a 33rd argument
+  before modifying memory. Values larger than the 8-byte slot are rejected.
+- Argument reads validate the supplied count and index. Primitive result reads
+  reject oversized types. Valid pointer-based native types retain their behavior.
+- Native Reset clears both cached and ABI argument/result counts. Push updates
+  the ABI count consistently; PushString now increments it. Native reads/writes
+  check bounds, and compile-time size checks protect direct value access.
+- Return values no longer erase the cached argument count mid-dispatch.
+- Native validation exceptions become NativeException messages through the
+  existing error channel instead of unwinding across the managed/native ABI.
+- Before the fix, 11 of 12 guarded-memory managed regression cases failed.
+  Null string results already worked; no CS2 process was used for reproduction.
+
+CALLBACK LIFETIME AND REENTRY
+- Dispatch snapshots own the callback until the pass returns. Releasing it
+  invalidates all registrations immediately, but cannot free an active dispatch.
+- Removing a listener marks that registration inactive, including in snapshots.
+  Re-adding the same function creates a new registration, used next dispatch.
+- Adding during a pass takes effect next pass. Removing oneself cannot skip the
+  next listener; removing another listener prevents calling its stale pointer.
+- Generic Execute uses an invocation-local context. Command, entity damage,
+  entity output and user-message hook loops use per-listener local contexts;
+  event and dynamic-hook loops retain their existing local contexts.
+- Dynamic hooks acquire their snapshot before invoking the native callback.
+- This follows the existing game-thread dispatch model; it does not introduce
+  support for arbitrary concurrent mutation from worker threads.
+- The original implementation fails the native self-removal regression.
+  The harness compiles the actual callback classes and implementation with only
+  engine logging/profiling/lifecycle declarations stubbed, not a copied algorithm.
+
+DIAGNOSTICS AND ALLOCATIONS
+- Managed callback exceptions identify callback ID, target assembly and method.
+- Zero-argument callbacks reuse Array.Empty instead of allocating an empty array.
+- Windows .NET 10 microbenchmark (median, 5 x 100000 calls):
+  Action: 384 -> 360 bytes/call; 52 -> 65 ns/call.
+  Primitives: 472 -> 472 bytes/call; 263 -> 277 ns/call.
+  ScriptContext: 408 -> 408 bytes/call; 112 -> 93 ns/call.
+  Mixed timings are not evidence of an overall speedup. This benchmark measures
+  managed dispatch only, not the new native snapshots or live server frame time.
+
+VALIDATION
+73 unit tests pass, including 13 context safety regressions.
+API compatibility against stability.3 passes; no public managed API was removed.
+Native Windows Release and in-game test plugin compilation pass.
+Offline native cases cover mutation, release during Execute and snapshot loops,
+reentry, exception recovery, Execute(false), 32/33 argument boundary, invalid
+reads, repeated resets and string argument counts.
+Linux CI additionally runs this harness with AddressSanitizer and UBSan, existing
+startup lifecycle checks, schema reproducibility and the full native build.
+The CI result and exact package checksums are recorded alongside the artifact.
+No in-game execution of stability.4 has been performed by the agent.
+
+INSTALL / CHECK
+Stop the test server and back up api/ and bin/linuxsteamrt64/counterstrikesharp.so.
+Unpack UPDATE.zip into game/csgo. It contains the complete API and native library.
+Existing configs, plugins, gamedata and .NET 10 runtime are retained.
+Check plugin load/unload/reload, map changes, commands, combat events and Panorama.
+Rollback requires restoring API and native library together while stopped.

@@ -62,6 +62,8 @@ void ScriptContext::Reset()
 
     m_numResults = 0;
     m_numArguments = 0;
+    m_native_context->numArguments = 0;
+    m_native_context->numResults = 0;
     *m_has_error = 0;
 
     for (int i = 0; i < 32; i++)
@@ -124,7 +126,19 @@ void ScriptEngine::InvokeNative(counterstrikesharp::fxNativeContext& context)
     {
         counterstrikesharp::ScriptContextRaw scriptContext(context);
 
-        (*nativeHandler)(scriptContext);
+        // Never let a validation error unwind through the managed/native ABI.
+        try
+        {
+            (*nativeHandler)(scriptContext);
+        }
+        catch (const std::exception& error)
+        {
+            if (!scriptContext.HasError()) scriptContext.ThrowNativeError("%s", error.what());
+        }
+        catch (...)
+        {
+            if (!scriptContext.HasError()) scriptContext.ThrowNativeError("Unhandled native exception");
+        }
     }
     else
     {

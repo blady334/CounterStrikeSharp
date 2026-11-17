@@ -134,6 +134,10 @@ class ScriptContext
 
     template <typename T> inline const T& GetArgument(int index)
     {
+        static_assert(sizeof(T) <= ArgumentSize, "Argument size of T");
+        if (index < 0 || index >= MaxArguments || index >= m_native_context->numArguments ||
+            m_native_context->numArguments > MaxArguments)
+            throw std::out_of_range("Script argument index is outside the supplied arguments");
         auto functionData = (uint64_t*)m_argumentBuffer;
 
         return *reinterpret_cast<T*>(&functionData[index]);
@@ -141,6 +145,7 @@ class ScriptContext
 
     template <typename T> inline void SetArgument(int index, const T& value)
     {
+        if (index < 0 || index >= MaxArguments) throw std::out_of_range("Script argument index exceeds buffer");
         auto functionData = (uint64_t*)m_argumentBuffer;
 
         static_assert(sizeof(T) <= ArgumentSize, "Argument size of T");
@@ -169,6 +174,8 @@ class ScriptContext
 
     template <typename T> inline void Push(const T& value)
     {
+        if (m_numArguments < 0 || m_numArguments >= MaxArguments)
+            throw std::out_of_range("Script context supports at most 32 arguments");
         auto functionData = (uint64_t*)m_argumentBuffer;
 
         static_assert(sizeof(T) <= ArgumentSize, "Argument size of T");
@@ -180,14 +187,12 @@ class ScriptContext
 
         *reinterpret_cast<T*>(&functionData[m_numArguments]) = value;
         m_numArguments++;
-        m_native_context->numArguments++;
+        m_native_context->numArguments = m_numArguments;
     }
 
     inline void PushString(const char* value)
     {
-        auto functionData = (uint64_t*)m_argumentBuffer;
-
-        *reinterpret_cast<const char**>(&functionData[m_numArguments]) = value;
+        Push(value);
     }
 
     template <typename T> inline void SetResult(const T& value)
@@ -200,7 +205,7 @@ class ScriptContext
         }
 
         m_numResults = 1;
-        m_numArguments = 0;
+        m_native_context->numResults = 1;
 
         if constexpr (std::is_same_v<T, const char*> || std::is_same_v<T, std::string>)
         {
@@ -221,12 +226,14 @@ class ScriptContext
         }
         else
         {
+            static_assert(sizeof(T) <= ArgumentSize, "Result size of T");
             *reinterpret_cast<T*>(&functionData[0]) = value;
         }
     }
 
     template <typename T> inline T GetResult()
     {
+        static_assert(sizeof(T) <= ArgumentSize, "Result size of T");
         auto functionData = (uint64_t*)m_result;
 
         return *reinterpret_cast<T*>(functionData);
