@@ -51,12 +51,14 @@ At most one summary per interval (minimum 5 seconds), only for slow handlers or
 a sufficiently large queue. Reports pending frame/world/tick counts and top eight
 labels with count, total and maximum wall time. Storage is bounded to 128 string
 labels per interval; it holds no plugin Type/Delegate references.
+BasePlugin wrappers carry the original handler label so reports identify the plugin
+method rather than only the framework wrapper. Cached labels contain strings only.
 Nested/native-wrapper timings overlap: do not sum them as exclusive CPU time.
 No forced callback termination or automatic server tuning. Disable with false
 and css_core_reload. See docfx/docs/reference/core-configuration.md.
 
 VALIDATION AND LIMITS
-96 unit tests pass, including queue budgets/order, cancellation during dispatch,
+97 unit tests pass, including queue budgets/order, cancellation during dispatch,
 unload cleanup with exceptions, concurrent producers, multicast ownership, timer
 reference cleanup, successful continuations and diagnostic rate/storage bounds.
 Four pre-fix queue-unload regressions fail against stability.4 and pass after fixing.

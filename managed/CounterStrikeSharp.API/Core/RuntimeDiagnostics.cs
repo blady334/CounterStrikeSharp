@@ -12,13 +12,23 @@ internal static class RuntimeDiagnostics
     private static long _lastReport;
     private static int _dropped;
     internal static long Begin() => CoreConfig.RuntimeDiagnosticsEnabled ? Stopwatch.GetTimestamp() : 0;
+    internal static string Describe(Delegate callback)
+    {
+        var method = callback.Method;
+        return $"{method.Module.Assembly.GetName().Name}:{method.DeclaringType?.FullName}.{method.Name}";
+    }
     internal static void End(Delegate callback, long started, string kind)
     {
         if (started == 0 || !CoreConfig.RuntimeDiagnosticsEnabled) return;
         double ms = Stopwatch.GetElapsedTime(started).TotalMilliseconds;
         if (ms < CoreConfig.SlowCallbackMilliseconds) return;
-        var method = callback.Method;
-        Record($"{kind}:{method.Module.Assembly.GetName().Name}:{method.DeclaringType?.FullName}.{method.Name}", ms);
+        Record($"{kind}:{Describe(callback)}", ms);
+    }
+    internal static void End(string label, long started, string kind)
+    {
+        if (started == 0 || !CoreConfig.RuntimeDiagnosticsEnabled) return;
+        double ms = Stopwatch.GetElapsedTime(started).TotalMilliseconds;
+        if (ms >= CoreConfig.SlowCallbackMilliseconds) Record($"{kind}:{label}", ms);
     }
     internal static void Record(string name, double ms)
     {

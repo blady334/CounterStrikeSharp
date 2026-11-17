@@ -8,6 +8,26 @@ namespace CounterStrikeSharp.API.Tests;
 [Collection("Callback ownership")]
 public class RuntimeDiagnosticsTests
 {
+    private static void DiagnosticTarget() { }
+    [Fact]
+    public unsafe void WrappedHandlerIsReportedAsTheOriginalPluginMethod()
+    {
+        _=new Application(Microsoft.Extensions.Logging.Abstractions.NullLoggerFactory.Instance,
+            null!,null!,null!,null!,null!,null!,null!,null!);
+        var field=typeof(CoreConfig).GetField("_coreConfig",BindingFlags.Static|BindingFlags.NonPublic)!;
+        var original=field.GetValue(null);
+        var reference=FunctionReference.CreateUnique((Action)(()=>Thread.Sleep(5)),(Action)DiagnosticTarget);
+        try
+        {
+            field.SetValue(null,new CoreConfigData { RuntimeDiagnosticsEnabled=true,SlowCallbackMilliseconds=0.1 });
+            RuntimeDiagnostics.Reset();
+            fxScriptContext context=default;
+            ((delegate* unmanaged<fxScriptContext*,void>)reference.GetFunctionPointer())(&context);
+            var sample=Assert.Single(RuntimeDiagnostics.TakeSamples());
+            Assert.EndsWith("."+nameof(DiagnosticTarget),sample.Name);
+        }
+        finally { FunctionReference.Remove(reference.Identifier); field.SetValue(null,original); RuntimeDiagnostics.Reset(); }
+    }
     [Fact]
     public void DisabledByDefaultAndBoundedWhenEnabled()
     {

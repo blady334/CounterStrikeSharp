@@ -52,6 +52,7 @@ namespace CounterStrikeSharp.API.Core
         private static readonly ConditionalWeakTable<Type, MethodInvoker> Invokers = new();
 
         private readonly Delegate _targetMethod;
+        private readonly string _diagnosticLabel;
         private readonly MethodInvoker _invoker;
         private readonly Type[] _parameterTypes;
         private readonly bool _takesScriptContext;
@@ -59,10 +60,11 @@ namespace CounterStrikeSharp.API.Core
 
         private readonly TaskCompletionSource _taskCompletionSource = new();
 
-        private FunctionReference(Delegate method, FunctionLifetime lifetime)
+        private FunctionReference(Delegate method, FunctionLifetime lifetime, Delegate? diagnosticTarget = null)
         {
             Lifetime = lifetime;
             _targetMethod = method;
+            _diagnosticLabel = RuntimeDiagnostics.Describe(diagnosticTarget ?? method);
             _invoker = Invokers.GetValue(method.GetType(), static type => MethodInvoker.Create(type.GetMethod("Invoke")!));
             _parameterTypes = Array.ConvertAll(method.GetType().GetMethod("Invoke")!.GetParameters(), parameter => parameter.ParameterType);
             _takesScriptContext = _parameterTypes.FirstOrDefault() == typeof(ScriptContext);
@@ -130,7 +132,7 @@ namespace CounterStrikeSharp.API.Core
                 }
                 finally
                 {
-                    if (diagnosticStart != 0) RuntimeDiagnostics.End(_targetMethod, diagnosticStart, "callback");
+                    if (diagnosticStart != 0) RuntimeDiagnostics.End(_diagnosticLabel, diagnosticStart, "callback");
                     if (Lifetime == FunctionLifetime.SingleUse)
                     {
                         RemoveSelf();
@@ -160,9 +162,9 @@ namespace CounterStrikeSharp.API.Core
 
         // Each native subscription owns its callback independently, even when
         // the same managed handler is registered for several events or modes.
-        internal static FunctionReference CreateUnique(Delegate method)
+        internal static FunctionReference CreateUnique(Delegate method, Delegate? diagnosticTarget = null)
         {
-            var reference = new FunctionReference(method, FunctionLifetime.Permanent);
+            var reference = new FunctionReference(method, FunctionLifetime.Permanent, diagnosticTarget);
             reference.Identifier = Register(reference, cacheByTarget: false);
             return reference;
         }

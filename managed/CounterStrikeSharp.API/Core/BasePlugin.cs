@@ -100,7 +100,7 @@ namespace CounterStrikeSharp.API.Core
                 _dispose = dispose;
                 _underlyingMethod = underlyingMethod;
 
-                var functionReference = FunctionReference.CreateUnique(wrapperMethod);
+                var functionReference = FunctionReference.CreateUnique(wrapperMethod, underlyingMethod);
                 _inputArgument = (InputArgument)functionReference;
 
                 _functionReferenceIdentifier = functionReference.Identifier;
