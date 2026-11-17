@@ -1,0 +1,62 @@
+CounterStrikeSharp — Katujemy stability.1, 2026-11-17
+
+Zakres: pierwsza partia poprawek stabilności. Nowe funkcje pozostają na później.
+Baza upstream: 0485c767339134c7cac16af1efdb951b222bf59e (main po v1.0.380).
+
+ZINTEGROWANE PR-Y
+1498  7f26fc048dfb68d3a2fc232a1ba9c11731eea7a6  hash encji z EntityHandle
+1497  2ee8f5cd954962c0a599081a023a062d2384970d  kolejność argumentów VTable
+1488  6cc7a24d8afe8a58ea36a072003ffd9a295b6f29  śledzenie wszystkich subskrypcji i odpinanie przy Dispose
+1480  2b318efbb91eda1de1cc125b42d6808c1546185e  nowy kontekst przy ręcznym reload pluginu
+1489  d42c4e1548e7d3f7a5fb1e1b13cf25fd9f751336  czas życia obiektów native i współbieżne sprzątanie pamięci
+1482  5e4911dbd576006c4980561d2d553fb51115880e  odpinanie statycznych komend przy unload
+1329  f4bd5e7ef54f40c6c67095c04da0177e92dc0faf  zabezpieczenie obcięcia pustego tekstu czatu
+1314  202d0eecc6cc558f47f4376be0a60f2cdac0330a  ponowne StartupServer przy Workshop/HLTV
+
+DOSTOSOWANIA INTEGRACJI
+- PR 1314 przeniesiono na aktualny KHook/GameEntitySystem. Zachowano obecną
+  obsługę OnMapEnd w OnLevelShutdown; oryginalny patch nie pasował do nowej bazy.
+- Do PR 1488 dodano osobną referencję FunctionReference dla każdej subskrypcji.
+  W samym PR dwie rejestracje tego samego event handlera nadal dzieliły referencję:
+  odpięcie jednej usuwało obiekt utrzymujący callback drugiej przy życiu.
+- Remove usuwa wpis cache tylko wtedy, gdy należy do usuwanej referencji.
+- Dispose pojedynczego CallbackSubscriber nie odpina ponownie tej samej subskrypcji.
+
+WERYFIKACJA LOKALNA
+- Bazowe testy .NET: 29/29.
+- Po integracji: 43/43, w tym testy pamięci z PR 1489 i 3 nowe testy callbacków.
+- Te 3 testy callbacków wykazują 3 błędy przed dodatkową poprawką integracji.
+- APICompat, tryb ścisły wobec DLL z bazowego buildu: bez niezgodności.
+- Pełny natywny build Windows x64 Release: udany, wraz z linkowaniem biblioteki.
+- Offline test faktycznych ciał metod StartupServer/OnLevelShutdown: udany
+  (pierwszy start, powtórzenia Workshop, brak dublowania listenerów, reset timerów,
+  prawdziwa zmiana mapy i sesja bez ticków). Granice silnika są w tym teście stubowane.
+- NativeTestsPlugin: kompilacja udana. Dodano scenariusz odpięcia PRE przy aktywnym
+  POST i wymuszeniu GC. Testy tego pluginu nie były uruchamiane w CS2.
+- Pełny build Linux i testy na serwerze: NIE WYKONANO.
+
+ODŁOŻONE / NIEPRZENIESIONE W TEJ PARTII
+- 1082: proponuje zmianę publicznych sygnatur rejestracji capabilities, usuwa plik
+  CompatibilitySuppressions.xml, czyści listę przed ponowną rejestracją i używa
+  magazynu Providers<object> zamiast magazynu właściwego typu. Wymaga przeprojektowania.
+- 1363: samo dodatkowe GCHandle nie naprawia odpinania współdzielonej subskrypcji.
+  W tej partii wdrożono niezależną własność referencji i testy; PR 1363 jako całość
+  nie jest wdrożony ani uznany za równoważny tej poprawce.
+- 1009: zmienia wywołanie FindPickerEntity; wymaga aktualnego audytu ABI silnika.
+- 1349: stary pakiet gamedata/narzędzi; nie cofamy aktualnych danych do starych sygnatur.
+- 1496 i 1208: optymalizacja callbacków/profilowanie, osobna partia.
+- 1483: regeneracja schematu, osobna zmiana zgodności z grą.
+- 1457/1461/1462: nie podmieniano przypiętych zależności na rewizje ze starych PR-ów.
+- Nowe funkcje i drafty (1472, 1478, 1479, 1402, 1243, 770, 618, 613, 1413)
+  pozostają poza zakresem uzgodnionej pierwszej partii.
+
+BUDOWANIE LINUX
+Przygotowano .github/workflows/katujemy-stability.yml: testy .NET, kompilacja
+testów do CS2, test cyklu sesji i build Linux w Steam Runtime sniper SDK.
+Wynikiem będzie archiwum kandydata z binarką native i kompletnym publish API,
+bez konfiguracji użytkownika, gamedata i runtime. Wymagana aktualna instalacja
+CounterStrikeSharp z .NET 10 i gamedata zgodnym z grą.
+Workflow nie publikuje Releases/NuGet i nie wdraża niczego na serwer.
+
+Nie wgrywaj DLL Windows na serwer Linux. Obecny stan jest przetestowanym zestawem
+źródeł do budowy Linux i testu na DEV, a nie potwierdzoną wersją produkcyjną.

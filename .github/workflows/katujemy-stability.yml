@@ -1,0 +1,80 @@
+name: Katujemy stability candidate
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [katujemy/stability-20261117]
+
+permissions:
+  contents: read
+
+env:
+  CANDIDATE_VERSION: 1.0.380-katujemy-stability.1
+
+jobs:
+  managed:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - name: Unit tests
+        run: dotnet test managed/CounterStrikeSharp.API.Tests -c Release --logger trx --results-directory test-results
+      - name: Compile in-game tests (execution requires CS2)
+        run: dotnet build managed/CounterStrikeSharp.Tests.Native -c Release
+      - name: Publish managed API
+        run: dotnet publish managed/CounterStrikeSharp.API -c Release -p:Version="$CANDIDATE_VERSION" -o managed-output
+      - uses: actions/upload-artifact@v4
+        with:
+          name: stability-managed
+          path: managed-output/
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: stability-test-results
+          path: test-results/
+  linux:
+    needs: managed
+    runs-on: ubuntu-latest
+    container:
+      image: registry.gitlab.steamos.cloud/steamrt/sniper/sdk:latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+      - name: Offline lifecycle checks
+        run: python3 eng/test-startup-lifecycle.py --out build-lifecycle
+      - name: Native build
+        shell: bash
+        run: |
+          set -euo pipefail
+          export SEMVER="$CANDIDATE_VERSION" GITHUB_SHA_SHORT="${GITHUB_SHA:0:7}"
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake --build build --parallel 4
+      - uses: actions/download-artifact@v4
+        with:
+          name: stability-managed
+          path: update/addons/counterstrikesharp/api
+      - name: Assemble update without overwriting user configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p update/addons/counterstrikesharp/bin/linuxsteamrt64
+          cp build/addons/counterstrikesharp/bin/linuxsteamrt64/counterstrikesharp.so update/addons/counterstrikesharp/bin/linuxsteamrt64/
+          python3 - <<'PY'
+          import hashlib, json, os, pathlib, zipfile
+          root = pathlib.Path('update')
+          files = sorted(p for p in root.rglob('*') if p.is_file())
+          manifest = {'commit': os.environ['GITHUB_SHA'], 'version': os.environ['CANDIDATE_VERSION'],
+                      'live_game_tested': False, 'files': {str(p.relative_to(root)): hashlib.sha256(p.read_bytes()).hexdigest() for p in files}}
+          pathlib.Path('candidate.json').write_text(json.dumps(manifest, indent=2))
+          with zipfile.ZipFile('CounterStrikeSharp-stability.1-linux-UPDATE.zip', 'w', zipfile.ZIP_DEFLATED) as z:
+              for p in files: z.write(p, p.relative_to(root))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: CounterStrikeSharp-stability.1-linux-candidate
+          path: |
+            CounterStrikeSharp-stability.1-linux-UPDATE.zip
+            candidate.json
