@@ -29,14 +29,22 @@ namespace CounterStrikeSharp.API.Modules.Timers
 
     public class Timer : NativeObject
     {
-        public Timer(float interval, Action callback, TimerFlags? flags = null) : base(IntPtr.Zero)
+        private readonly TimerState _state;
+        internal Action? OnFinished;
+        public Timer(float interval, Action callback, TimerFlags? flags = null)
+            : this(interval, callback, flags, NativeTimerBackend.Instance) { }
+
+        internal Timer(float interval, Action callback, TimerFlags? flags, ITimerBackend backend) : base(IntPtr.Zero)
         {
-            Handle = NativeAPI.CreateTimer(interval, callback, (int)(flags ?? 0));
+            _state = new TimerState(interval, callback, flags ?? 0, backend);
+            Handle = _state.Handle;
+            _state.Finished = () => { Handle = IntPtr.Zero; var finished = OnFinished; OnFinished = null; finished?.Invoke(); };
         }
 
         public void Kill()
         {
-            NativeAPI.KillTimer(Handle);
+            _state.Stop();
         }
+        internal static void StopMapTimers() => TimerState.StopMapTimers();
     }
 }

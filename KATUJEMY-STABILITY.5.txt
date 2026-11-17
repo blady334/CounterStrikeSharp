@@ -1,0 +1,83 @@
+CounterStrikeSharp 1.0.380-katujemy-stability.5 — 2026-11-17
+
+Base: stability.4, 27b7c2aaa3ba6f3bd26fb9a3c45d3e78c42e1a2d.
+Scope: deferred work, timer/reload lifetime, optional runtime diagnostics.
+No gameplay/API feature PR batch, live deployment or restart is included.
+
+DEFERRED WORK
+- NextFrame/NextWorldUpdate work belongs to the collectible plugin generation
+  identified by its delegate method/target or contextual reflection at scheduling.
+  Multicast delegates account for all contributing collectible generations.
+- Plugin unload/load failure cancels pending work and releases delegates. Closed
+  generations reject new work; completed work leaves the ownership registry.
+- Public Server.RunOnTick now uses the managed, cancelable scheduler instead of
+  retaining a reverse-P/Invoke pointer until an arbitrary future tick. The low-level
+  NativeAPI.QueueTaskForFrame ABI is unchanged; this protection is for Server APIs.
+- Due tick tasks execute in tick order and FIFO within equal ticks, with the existing
+  MaximumFrameTasksExecutedPerTick applied independently to each queue. A large due
+  batch is deferred across ticks. Invalid limits below 1 are treated as 1.
+- Frame/world/tick queues take a bounded batch before dispatch. Adding during
+  execution waits for a later pass. Cancellation still affects a detached batch.
+- Map end cancels pending work. Workshop startup repeats invalidate old tick-based
+  tasks while preserving ordinary frame/world initialization; initial startup is kept.
+- World-update work runs during hibernation; frame/tick work waits for game ticks.
+- Async results propagate errors and cancellation. Fire-and-forget failures are
+  logged with assembly/method. Successful continuation behavior is preserved;
+  task completion occurs outside scheduler locks to allow reentry.
+
+TIMERS
+- Each managed Timer owns a unique native function reference. It releases the
+  reference on one-shot completion, Kill, stop-on-map-change, failed creation or unload.
+- Completed/killed timers clear their handles, making repeated Kill harmless and
+  preventing an old Timer from targeting a reused native timer address.
+- BasePlugin removes finished timers from its tracking list; disposal iterates a
+  snapshot so self-removal does not invalidate cleanup.
+- Direct Timer instances are also owned by their plugin generation. ALC unload
+  immediately disables the user callback. Native cleanup runs on the game thread,
+  retaining the inert trampoline until native code has released its pointer.
+- Native TimerSystem snapshots keep timers alive during dispatch; self/sibling
+  removal and map cleanup cannot delete an executing timer. Recursive RunFrame is
+  guarded. New timers wait for the next pass, and shutdown releases remaining timers.
+- The pre-fix native implementation fails the recursive-execution regression.
+
+OPTIONAL DIAGNOSTICS
+Disabled by default; existing core.json need not change.
+Add fields to addons/counterstrikesharp/configs/core.json and run css_core_reload:
+  "RuntimeDiagnosticsEnabled": true,
+  "SlowCallbackMilliseconds": 5,
+  "DiagnosticsIntervalSeconds": 30,
+  "DiagnosticsQueueThreshold": 256
+At most one summary per interval (minimum 5 seconds), only for slow handlers or
+a sufficiently large queue. Reports pending frame/world/tick counts and top eight
+labels with count, total and maximum wall time. Storage is bounded to 128 string
+labels per interval; it holds no plugin Type/Delegate references.
+Nested/native-wrapper timings overlap: do not sum them as exclusive CPU time.
+No forced callback termination or automatic server tuning. Disable with false
+and css_core_reload. See docfx/docs/reference/core-configuration.md.
+
+VALIDATION AND LIMITS
+96 unit tests pass, including queue budgets/order, cancellation during dispatch,
+unload cleanup with exceptions, concurrent producers, multicast ownership, timer
+reference cleanup, successful continuations and diagnostic rate/storage bounds.
+Four pre-fix queue-unload regressions fail against stability.4 and pass after fixing.
+20 collectible-context reloads and 100 timer ownership cycles leave no retained
+tested contexts/pending callbacks; these are isolated tests, not production soak tests.
+API compatibility against stability.4, native Windows Release and compilation of
+the in-game test plugin pass. Linux CI also runs ASan/UBSan callback/timer tests,
+startup lifecycle checks, schema reproducibility and the full native build.
+No in-game test or server performance improvement is claimed by the agent.
+
+Behavior change: pending tasks become canceled on unload/map end. Awaiters should
+handle cancellation. Do required unload cleanup synchronously rather than enqueueing
+it from the unloading plugin. Already-running code is allowed to finish; arbitrary
+external Task.Run threads and unrelated plugin-owned resources are not terminated.
+Ownership detection cannot infer a plugin hidden entirely behind a non-collectible
+helper delegate outside contextual reflection. Plugin-specific helper frameworks
+must still dispose their own resources. Existing native-thread rules remain.
+
+INSTALL
+Stop the test server, back up API and native library, unpack UPDATE.zip to game/csgo.
+Update the entire api/ directory and bin/linuxsteamrt64/counterstrikesharp.so together.
+Configs, gamedata, user plugins and .NET runtime are not included or overwritten.
+Check plugin reload, map changes, scheduled actions, gameplay timers and Panorama.
+For rollback restore API and native library together with the server stopped.

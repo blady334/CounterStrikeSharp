@@ -32,6 +32,7 @@
 #pragma once
 
 #include <vector>
+#include <memory>
 
 #include "core/global_listener.h"
 #include "scripting/script_engine.h"
@@ -88,12 +89,13 @@ class TimerSystem : public GlobalClass
     double GetTickedTime();
 
   private:
+    bool m_running_frame = false;
     bool m_has_map_ticked = false;
     bool m_has_map_simulated = false;
     float m_last_ticked_time = 0.0f;
     ScriptCallback* m_on_tick_callback_ = nullptr;
 
-    std::vector<timers::Timer*> m_once_off_timers;
-    std::vector<timers::Timer*> m_repeat_timers;
+    std::vector<std::shared_ptr<timers::Timer>> m_once_off_timers;
+    std::vector<std::shared_ptr<timers::Timer>> m_repeat_timers;
 };
 } // namespace counterstrikesharp

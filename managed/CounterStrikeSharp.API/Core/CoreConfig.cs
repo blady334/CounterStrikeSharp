@@ -70,6 +70,11 @@ namespace CounterStrikeSharp.API.Core
 
         [JsonPropertyName("MaximumFrameTasksExecutedPerTick")]
         public int MaximumFrameTasksExecutedPerTick { get; set; } = 1024;
+
+        public bool RuntimeDiagnosticsEnabled { get; set; } = false;
+        public double SlowCallbackMilliseconds { get; set; } = 5;
+        public int DiagnosticsIntervalSeconds { get; set; } = 30;
+        public int DiagnosticsQueueThreshold { get; set; } = 256;
     }
 
     /// <summary>
@@ -127,6 +132,11 @@ namespace CounterStrikeSharp.API.Core
         public static bool UnlockConVars => _coreConfig.UnlockConVars;
 
         public static int MaximumFrameTasksExecutedPerTick => _coreConfig.MaximumFrameTasksExecutedPerTick;
+        internal static bool RuntimeDiagnosticsEnabled => _coreConfig.RuntimeDiagnosticsEnabled;
+        internal static double SlowCallbackMilliseconds => double.IsFinite(_coreConfig.SlowCallbackMilliseconds)
+            ? Math.Max(0.1, _coreConfig.SlowCallbackMilliseconds) : 5;
+        internal static int DiagnosticsIntervalSeconds => Math.Max(5, _coreConfig.DiagnosticsIntervalSeconds);
+        internal static int DiagnosticsQueueThreshold => Math.Max(1, _coreConfig.DiagnosticsQueueThreshold);
     }
 
     public partial class CoreConfig : IStartupService
@@ -173,6 +183,7 @@ namespace CounterStrikeSharp.API.Core
                     if (data != null)
                     {
                         _coreConfig = data;
+                        RuntimeDiagnostics.Reset();
                     }
                 }
                 catch (Exception ex)

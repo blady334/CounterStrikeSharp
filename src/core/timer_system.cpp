@@ -64,7 +64,14 @@ TimerSystem::TimerSystem()
 
 void TimerSystem::OnAllInitialized() { m_on_tick_callback_ = globals::callbackManager.CreateCallback("OnTick"); }
 
-void TimerSystem::OnShutdown() { globals::callbackManager.ReleaseCallback(m_on_tick_callback_); }
+void TimerSystem::OnShutdown() {
+    for (const auto& timer : m_once_off_timers) timer->m_kill_me = true;
+    for (const auto& timer : m_repeat_timers) timer->m_kill_me = true;
+    m_once_off_timers.clear();
+    m_repeat_timers.clear();
+    globals::callbackManager.ReleaseCallback(m_on_tick_callback_);
+    m_on_tick_callback_ = nullptr;
+}
 
 void TimerSystem::OnLevelEnd()
 {
@@ -131,118 +138,73 @@ double TimerSystem::CalculateNextThink(double last_think_time, float interval)
 
 void TimerSystem::RunFrame()
 {
-    for (int i = m_once_off_timers.size() - 1; i >= 0; i--)
+    if (m_running_frame) return;
+    m_running_frame = true;
+    struct FrameGuard { bool& running; ~FrameGuard() { running = false; } } guard{m_running_frame};
+    // Snapshots retain timers deleted by another callback. Newly created timers
+    // start next pass, and recursive RunFrame cannot execute an active timer twice.
+    const auto once = m_once_off_timers;
+    const auto repeat = m_repeat_timers;
+    for (auto it = once.rbegin(); it != once.rend(); ++it)
     {
-        auto timer = m_once_off_timers[i];
-        if (timers::universal_time >= timer->m_exec_time)
-        {
-            timer->m_in_exec = true;
-            timer->m_callback->ScriptContext().Reset();
-            timer->m_callback->Execute();
-
-            if (i >= static_cast<int>(m_once_off_timers.size()) || m_once_off_timers[i] != timer)
-                i = std::find(m_once_off_timers.begin(), m_once_off_timers.end(), timer) - m_once_off_timers.begin();
-
-            m_once_off_timers.erase(m_once_off_timers.begin() + i);
-            delete timer;
-        }
+        const auto& timer = *it;
+        if (timer->m_kill_me || timer->m_in_exec || timers::universal_time < timer->m_exec_time) continue;
+        timer->m_in_exec = true;
+        timer->m_callback->ScriptContext().Reset();
+        timer->m_callback->Execute();
+        timer->m_in_exec = false;
+        timer->m_kill_me = true;
+        std::erase(m_once_off_timers, timer);
     }
-
-    for (int i = m_repeat_timers.size() - 1; i >= 0; i--)
+    for (auto it = repeat.rbegin(); it != repeat.rend(); ++it)
     {
-        auto timer = m_repeat_timers[i];
-        if (timers::universal_time >= timer->m_exec_time)
-        {
-            timer->m_in_exec = true;
-            timer->m_callback->ScriptContext().Reset();
-            timer->m_callback->Execute();
-
-            if (i >= static_cast<int>(m_repeat_timers.size()) || m_repeat_timers[i] != timer)
-                i = std::find(m_repeat_timers.begin(), m_repeat_timers.end(), timer) - m_repeat_timers.begin();
-
-            if (timer->m_kill_me)
-            {
-                m_repeat_timers.erase(m_repeat_timers.begin() + i);
-                delete timer;
-                continue;
-            }
-
-            timer->m_in_exec = false;
-            timer->m_exec_time = CalculateNextThink(timer->m_exec_time, timer->m_interval);
-        }
+        const auto& timer = *it;
+        if (timer->m_kill_me || timer->m_in_exec || timers::universal_time < timer->m_exec_time) continue;
+        timer->m_in_exec = true;
+        timer->m_callback->ScriptContext().Reset();
+        timer->m_callback->Execute();
+        timer->m_in_exec = false;
+        if (!timer->m_kill_me) timer->m_exec_time = CalculateNextThink(timer->m_exec_time, timer->m_interval);
     }
 }
 
 void TimerSystem::RemoveMapChangeTimers()
 {
-    auto isMapChangeTimer = [](timers::Timer* timer) {
-        bool shouldRemove = timer->m_flags & TIMER_FLAG_NO_MAPCHANGE;
-        if (shouldRemove)
-        {
-            delete timer;
-        }
-        return shouldRemove;
+    auto remove = [](const auto& timer) {
+        if (!(timer->m_flags & TIMER_FLAG_NO_MAPCHANGE)) return false;
+        timer->m_kill_me = true;
+        return true;
     };
-
-    std::erase_if(m_once_off_timers, isMapChangeTimer);
-    std::erase_if(m_repeat_timers, isMapChangeTimer);
+    std::erase_if(m_once_off_timers, remove);
+    std::erase_if(m_repeat_timers, remove);
 }
 
 timers::Timer* TimerSystem::CreateTimer(float interval, CallbackT callback, int flags)
 {
     float exec_time = timers::universal_time + interval;
 
-    auto timer = new timers::Timer(interval, exec_time, callback, flags);
+    auto timer = std::make_shared<timers::Timer>(interval, exec_time, callback, flags);
 
     if (flags & TIMER_FLAG_REPEAT)
     {
         m_repeat_timers.push_back(timer);
-        return timer;
+        return timer.get();
     }
 
     m_once_off_timers.push_back(timer);
-    return timer;
+    return timer.get();
 }
 
 void TimerSystem::KillTimer(timers::Timer* timer)
 {
     if (!timer) return;
-
-    if (std::find(m_repeat_timers.begin(), m_repeat_timers.end(), timer) == m_repeat_timers.end() &&
-        std::find(m_once_off_timers.begin(), m_once_off_timers.end(), timer) == m_once_off_timers.end())
-    {
-        return;
-    }
-
-    if (timer->m_kill_me) return;
-
-    // If were executing, make sure it doesn't run again next time.
-    if (timer->m_in_exec)
-    {
-        timer->m_kill_me = true;
-        return;
-    }
-
-    if (timer->m_flags & TIMER_FLAG_REPEAT)
-    {
-        auto it = std::remove_if(m_repeat_timers.begin(), m_repeat_timers.end(), [timer](timers::Timer* i) {
-            return timer == i;
-        });
-
-        bool success;
-        if ((success = it != m_repeat_timers.end())) m_repeat_timers.erase(it, m_repeat_timers.end());
-        delete timer;
-    }
-    else
-    {
-        auto it = std::remove_if(m_once_off_timers.begin(), m_once_off_timers.end(), [timer](timers::Timer* i) {
-            return timer == i;
-        });
-
-        bool success;
-        if ((success = it != m_once_off_timers.end())) m_once_off_timers.erase(it, m_once_off_timers.end());
-        delete timer;
-    }
+    auto remove = [timer](const auto& owned) {
+        if (owned.get() != timer) return false;
+        owned->m_kill_me = true;
+        return true;
+    };
+    std::erase_if(m_once_off_timers, remove);
+    std::erase_if(m_repeat_timers, remove);
 }
 
 double TimerSystem::GetTickedTime() { return timers::universal_time; }

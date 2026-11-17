@@ -393,6 +393,7 @@ namespace CounterStrikeSharp.API.Core
         {
             var timer = new Timer(interval, callback, flags ?? 0);
             Timers.Add(timer);
+            timer.OnFinished = () => Timers.Remove(timer);
             return timer;
         }
 
@@ -408,6 +409,7 @@ namespace CounterStrikeSharp.API.Core
         {
             var timer = new Timer(tickInterval * Server.TickInterval, callback, flags ?? 0);
             Timers.Add(timer);
+            timer.OnFinished = () => Timers.Remove(timer);
             return timer;
         }
 
@@ -729,7 +731,7 @@ namespace CounterStrikeSharp.API.Core
                 CommandManager.RemoveCommand(definition);
             }
 
-            foreach (var timer in Timers)
+            foreach (var timer in Timers.ToArray())
             {
                 timer.Kill();
             }

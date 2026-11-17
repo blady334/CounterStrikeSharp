@@ -56,4 +56,23 @@ When enabled, CS# will check for any updates to the gamedata.json file and autom
 The URL to use for the auto-update feature. This URL should point to a JSON file that contains the latest version of the gamedata.json file.
 
 ## MaximumFrameTasksExecutedPerTick
-The maximum amount of `NextFrame` and `NextWorldUpdate` tasks that can be executed on a single game frame. The queue totals are tracked separately. Defaults to 1024. This value can be reduced to prevent long frame burstiness.
+The maximum number of `NextFrame`, `NextWorldUpdate` and due `RunOnTick` tasks executed per dispatch. Each queue has its own limit. Defaults to 1024; values below 1 are treated as 1. This is a count limit, not a time budget: a running callback cannot be preempted.
+
+Pending tasks are canceled on plugin unload and map end. Their async results become canceled, so code awaiting them should handle cancellation. Tasks already executing are allowed to finish. Tasks queued during a dispatch run in a later pass. `RunOnTick` executes due work in tick order (FIFO for equal ticks), with overflow deferred to subsequent ticks. Workshop session restarts also cancel old tick-indexed tasks.
+
+`NextFrame` and `RunOnTick` require game ticks; `NextWorldUpdate` continues during hibernation. Plugin unload cleanup that must run should be performed synchronously in `Unload`, rather than queued from the unloading plugin.
+
+## Optional runtime diagnostics (Katujemy build)
+
+Diagnostics are disabled by default. To enable them, add these fields to your existing `configs/core.json`, preserving the other settings, then run `css_core_reload`:
+
+```json
+"RuntimeDiagnosticsEnabled": true,
+"SlowCallbackMilliseconds": 5,
+"DiagnosticsIntervalSeconds": 30,
+"DiagnosticsQueueThreshold": 256
+```
+
+At most one summary is logged per interval (minimum 5 seconds), and only if there were slow callbacks or the pending task count reached the threshold. The summary includes queue counts and the top eight slow callback labels with count, total and maximum time. Up to 128 labels are retained per interval; excess samples are counted, not stored. Labels contain assembly/method names, not plugin objects.
+
+Measurements are wall time, include nested calls and must not be summed as exclusive CPU time. Native wrapper callbacks and their timer bodies can appear separately. These diagnostics observe scheduling and slow handlers; they do not automatically kill plugins or change server settings. Disable with `"RuntimeDiagnosticsEnabled": false` and `css_core_reload`.

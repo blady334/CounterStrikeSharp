@@ -77,6 +77,8 @@ public class CapabilityOwnershipTests
         var capability = new PluginCapability<string>(Name());
         using (owner.EnterContextualReflection()) Capabilities.RegisterPluginCapability(capability, () => "old");
         var plugin = new CleanupPlugin(unloadThrows, disposeThrows);
+        Task pending;
+        using (owner.EnterContextualReflection()) pending = Server.NextFrameAsync(() => { });
         var scope = new Mock<IServiceScope>();
         // Exercise the real Unload method without creating a native host or loader.
         var context = (PluginContext)RuntimeHelpers.GetUninitializedObject(typeof(PluginContext));
@@ -90,6 +92,7 @@ public class CapabilityOwnershipTests
         else context.Unload(true);
         Assert.Null(capability.Get());
         scope.Verify(s => s.Dispose(), Times.Once);
+        Assert.True(pending.IsCanceled);
         owner.Unload();
     }
 

@@ -151,6 +151,7 @@ namespace CounterStrikeSharp.API.Core.Plugin
             {
                 // Includes failures during construction/configuration, before Plugin.Load.
                 CapabilityOwnership.Release(_capabilityContext);
+                WorkOwnership.Release(_capabilityContext);
                 throw;
             }
         }
@@ -301,6 +302,7 @@ namespace CounterStrikeSharp.API.Core.Plugin
             if (State == PluginState.Unloaded) return;
 
             State = PluginState.Unloaded;
+            WorkOwnership.Release(_capabilityContext);
             var cachedName = Plugin.ModuleName;
 
             _logger.LogInformation("Unloading plugin {Name}", Plugin.ModuleName);

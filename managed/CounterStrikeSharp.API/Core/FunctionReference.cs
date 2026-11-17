@@ -86,6 +86,7 @@ namespace CounterStrikeSharp.API.Core
         {
             return context =>
             {
+                var diagnosticStart = RuntimeDiagnostics.Begin();
                 try
                 {
                     var scriptContext = new ScriptContext(context);
@@ -129,6 +130,7 @@ namespace CounterStrikeSharp.API.Core
                 }
                 finally
                 {
+                    if (diagnosticStart != 0) RuntimeDiagnostics.End(_targetMethod, diagnosticStart, "callback");
                     if (Lifetime == FunctionLifetime.SingleUse)
                     {
                         RemoveSelf();
