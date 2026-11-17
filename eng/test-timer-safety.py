@@ -6,6 +6,7 @@ import subprocess
 ROOT = Path(__file__).resolve().parents[1]
 parser=argparse.ArgumentParser()
 parser.add_argument('--out',required=True,type=Path)
+parser.add_argument('--benchmark',action='store_true',help='Measure the current scheduler; no production scheduling changes')
 args=parser.parse_args(); args.out.mkdir(parents=True,exist_ok=True)
 header=(ROOT/'src/core/timer_system.h').read_text()
 header='\n'.join(l for l in header.splitlines() if not l.startswith('#include "') and l!='#pragma once')
@@ -41,6 +42,7 @@ for sig in ['timers::Timer::Timer(', 'timers::Timer::~Timer()', 'TimerSystem::Ti
             'void TimerSystem::RemoveMapChangeTimers()', 'timers::Timer* TimerSystem::CreateTimer(',
             'void TimerSystem::KillTimer(']: source+=method(sig)+'\n'
 source+='void TimerSystem::OnAllInitialized() {} void TimerSystem::OnShutdown() {} void TimerSystem::OnLevelEnd() {}\n}\n'
+if args.benchmark: source+='\n#define main safety_main\n'
 source+=r'''
 using namespace counterstrikesharp;
 TimerSystem systemUnderTest;
@@ -70,10 +72,35 @@ int main() {
  systemUnderTest.RunFrame(); assert(calls==1); systemUnderTest.RunFrame(); assert(calls==2);
  assert(globals::callbackManager.live==0);
  puts("PASS: timer reentry, self/sibling cancellation, map cleanup during callback, deferred additions, callback lifetime");
+ return 0;
+}
+'''
+if args.benchmark:
+    source+=r'''
+#undef main
+#include <chrono>
+int main() {
+ safety_main();
+ constexpr int frames=100000;
+ for(bool due : {false,true}) for(int size : {0,10,100,1000}) {
+  TimerSystem tested;
+  std::vector<timers::Timer*> owned;
+  for(int i=0;i<size;++i) owned.push_back(tested.CreateTimer(due?0:3600,count,TIMER_FLAG_REPEAT));
+  for(int i=0;i<1000;++i) tested.RunFrame();
+  for(int sample=0;sample<5;++sample) {
+   auto start=std::chrono::steady_clock::now();
+   for(int i=0;i<frames;++i) tested.RunFrame();
+   auto ns=std::chrono::duration<double,std::nano>(std::chrono::steady_clock::now()-start).count()/frames;
+   printf("{\"timers\":%d,\"all_due\":%s,\"sample\":%d,\"ns_per_frame\":%.3f}\n",size,due?"true":"false",sample,ns);
+  }
+  for(auto* timer:owned) tested.KillTimer(timer);
+ }
+ assert(globals::callbackManager.live==0);
 }
 '''
 path=args.out.resolve()/'timer-safety.cpp'; path.write_text(source)
 exe=path.with_suffix('.exe' if os.name=='nt' else '')
 command=['cl','/nologo','/EHsc','/std:c++20',str(path),'/Fe:'+str(exe),'/Fo:'+str(path.with_suffix('.obj'))] if os.name=='nt' else [
-    'c++','-std=c++20','-g','-fsanitize=address,undefined','-fno-omit-frame-pointer',str(path),'-o',str(exe)]
+    'c++','-std=c++20',*(['-O2'] if args.benchmark else ['-g','-fsanitize=address,undefined','-fno-omit-frame-pointer']),str(path),'-o',str(exe)]
+if args.benchmark and os.name=='nt': command+=['/O2']
 subprocess.run(command,check=True); subprocess.run([str(exe)],check=True)

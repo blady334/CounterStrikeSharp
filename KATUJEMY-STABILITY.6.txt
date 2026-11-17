@@ -1,0 +1,52 @@
+CounterStrikeSharp 1.0.380-katujemy-stability.6 — 2026-11-17
+
+Base: stability.5, 8b2c266c6be08e5417e3aae9fd64c25158838428.
+Scope: callback dispatch allocation and immutable listener snapshots.
+
+- Native callback lists are built lazily once after registration changes, then
+  shared across dispatches. Each snapshot retains its callback owner. Published
+  lists stay immutable; shared tombstones disable removed registrations at once,
+  including removal/re-addition and plugin release during nested dispatch.
+  Empty lists retain no allocated list. Engine-thread usage rules are unchanged.
+- Managed callbacks with 0–4 arguments use fixed-arity MethodInvoker overloads;
+  larger signatures retain a per-invocation array. There is no shared argument
+  buffer or pooled object array retaining plugin references. Delegate Invoke
+  signatures, diagnostic attribution, completion and exception handling remain.
+- Added arity/order and nested callback tests, retained-snapshot mutation coverage,
+  and opt-in offline callback/timer microbenchmarks. Existing unload, timers,
+  collectible context, buffer bounds and lifecycle tests are retained.
+
+MEASUREMENTS (Windows x64 Release, local offline microbenchmarks)
+Native dispatch, median ns/call, stability.5 -> .6:
+  0 listeners: 24.934 -> 24.943
+  1 listener:  57.623 -> 32.536
+  8 listeners: 121.655 -> 35.323
+ 32 listeners: 335.272 -> 54.409
+Five samples, one million calls/sample; logging/profiling/engine stubbed.
+
+Managed reverse-P/Invoke entry, median bytes/call:
+  1 argument: 440 -> 408; 2 arguments: 472 -> 432
+  3 arguments: 504 -> 456; 4 arguments: 536 -> 480
+  0 arguments, 5 arguments and ScriptContext handler: unchanged.
+Five samples, 100,000 calls/sample, .NET 10, tiered compilation disabled equally
+for both versions. Wall time mixed: e.g. 1 argument 139 -> 152 ns, 4 arguments
+324 -> 303 ns. This change reduces allocation, not every invocation's latency.
+These are dispatch measurements, not production FPS or tick-time claims.
+
+Timer scheduling is unchanged. A separate optimized benchmark of the actual
+current RunFrame with stub callbacks measures roughly 9 us/pass for 1000 idle
+repeat timers and 10 us/pass when all are due. It excludes actual plugin bodies,
+managed callback dispatch, timer churn and game work. No alternative scheduler
+has been implemented or validated. Profile a live workload before redesigning
+timer ordering/cancellation. --benchmark modes disable sanitizers; normal safety
+harness modes keep ASan+UBSan on Linux.
+
+VALIDATION / UPDATE
+105 unit tests, public API compatibility against stability.5, native build,
+in-game test plugin compilation (not execution); Linux CI also checks generated
+schema, startup lifecycle, callback and timer safety with ASan+UBSan.
+Update API and native library together while the test server is stopped.
+The UPDATE package does not replace configs, gamedata, .NET runtime or plugins.
+No new feature PRs, production deployment or server restart are included.
+Runtime diagnostics stay disabled by default. Gameplay validation remains on
+the test server: plugin reload, map change, timers, menu clicks and Panorama.

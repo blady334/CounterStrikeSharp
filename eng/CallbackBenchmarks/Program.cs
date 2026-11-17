@@ -13,6 +13,10 @@ unsafe class Program
         _ = new Application(NullLoggerFactory.Instance, null!, null!, null!, null!, null!, null!, null!, null!);
         Run("Action", new Action(() => sink++));
         Run("Primitives", new Func<int, IntPtr, int>((a, b) => a + (int)b));
+        Run("Arity1", new Func<int, int>(a => a));
+        Run("Arity3", new Func<int, int, int, int>((a, b, c) => a + b + c));
+        Run("Arity4", new Func<int, int, int, int, int>((a, b, c, d) => a + b + c + d));
+        Run("Arity5", new Func<int, int, int, int, int, int>((a, b, c, d, e) => a + b + c + d + e));
         Run("ScriptContext", new Func<ScriptContext, int>(c => c.GetArgument<int>(0)));
         GC.KeepAlive(sink);
     }
@@ -25,9 +29,8 @@ unsafe class Program
         {
             var callback = (delegate* unmanaged<fxScriptContext*, void>)reference.GetFunctionPointer();
             fxScriptContext context = default;
-            context.numArguments = 2;
-            ((long*)context.functionData)[0] = 1;
-            ((long*)context.functionData)[1] = 2;
+            context.numArguments = 5;
+            for (int i = 0; i < 5; i++) ((long*)context.functionData)[i] = i + 1;
             for (int i = 0; i < count; i++) callback(&context);
             var samples = new List<object>();
             for (int sample = 0; sample < 5; sample++)

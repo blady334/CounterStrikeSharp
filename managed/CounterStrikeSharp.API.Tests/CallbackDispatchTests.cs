@@ -53,6 +53,53 @@ public unsafe class CallbackDispatchTests
         Assert.Equal(87, Invoke(new Func<ScriptContext, int>(c => c.GetArgument<int>(0) + 1), FunctionLifetime.Permanent, 86));
     }
 
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(2)]
+    [InlineData(3)]
+    [InlineData(4)]
+    [InlineData(5)]
+    public void FixedArityAndFallbackPreserveArgumentOrder(int arity)
+    {
+        Delegate handler = arity switch
+        {
+            0 => new Func<int>(() => 7),
+            1 => new Func<int, int>(a => a),
+            2 => new Func<int, int, int>((a,b) => a*10+b),
+            3 => new Func<int, int, int, int>((a,b,c) => a*100+b*10+c),
+            4 => new Func<int, int, int, int, int>((a,b,c,d) => a*1000+b*100+c*10+d),
+            _ => new Func<int, int, int, int, int, int>((a,b,c,d,e) => a*10000+b*1000+c*100+d*10+e)
+        };
+        Assert.Equal(new long[] {7,1,12,123,1234,12345}[arity],
+            Invoke(handler, FunctionLifetime.Permanent, Enumerable.Range(1, arity).Select(i => (long)i).ToArray()));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void NestedCallsDoNotOverwriteOuterArguments(bool fallback)
+    {
+        var nested = false;
+        var results = new List<int>();
+        Delegate handler = null!;
+        int Body(int a, int b, int c, int d, int e)
+        {
+            if (!nested)
+            {
+                nested = true;
+                Invoke(handler!, FunctionLifetime.Permanent, 9,8,7,6,5);
+            }
+            var result = a*10000+b*1000+c*100+d*10+e;
+            results.Add(result);
+            return result;
+        }
+        handler = fallback ? new Func<int,int,int,int,int,int>(Body)
+            : new Func<int,int,int,int,int>((a,b,c,d) => Body(a,b,c,d,0));
+        Invoke(handler, FunctionLifetime.Permanent, 1,2,3,4,5);
+        Assert.Equal(fallback ? new[] {98765,12345} : new[] {98760,12340}, results);
+    }
+
     [Fact]
     public void MulticastDelegateCallsEveryTargetInOrderAndReturnsLastResult()
     {

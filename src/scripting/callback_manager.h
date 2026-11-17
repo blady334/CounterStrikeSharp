@@ -47,9 +47,14 @@ class ScriptCallback : public std::enable_shared_from_this<ScriptCallback>
     struct Snapshot
     {
         std::shared_ptr<ScriptCallback> owner;
-        std::vector<Listener> listeners;
-        auto begin() const { return listeners.begin(); }
-        auto end() const { return listeners.end(); }
+        std::shared_ptr<const std::vector<Listener>> listeners;
+        const std::vector<Listener>& Entries() const
+        {
+            static const std::vector<Listener> empty;
+            return listeners ? *listeners : empty;
+        }
+        auto begin() const { return Entries().begin(); }
+        auto end() const { return Entries().end(); }
     };
     ScriptCallback(const char* szName);
     ~ScriptCallback();
@@ -68,6 +73,9 @@ class ScriptCallback : public std::enable_shared_from_this<ScriptCallback>
 
   private:
     std::vector<std::shared_ptr<ListenerState>> m_functions;
+    // Published lists are immutable. Nested dispatch can retain an older list;
+    // the shared ListenerState tombstones still invalidate removed entries.
+    std::shared_ptr<const std::vector<Listener>> m_snapshot;
     std::string m_name;
     std::string m_profile_name;
     ScriptContextRaw m_script_context_raw;

@@ -105,13 +105,21 @@ namespace CounterStrikeSharp.API.Core
                         return;
                     }
 
-                    var arguments = _parameterTypes.Length == 0 ? Array.Empty<object?>() : new object?[_parameterTypes.Length];
-                    for (var i = 0; i < arguments.Length; i++)
+                    // The fixed-arity overloads avoid an object[] for common
+                    // callbacks. Arguments remain local to each nested call.
+                    var returnObj = _parameterTypes.Length switch
                     {
-                        arguments[i] = scriptContext.GetArgument(_parameterTypes[i], i);
-                    }
-
-                    var returnObj = _invoker.Invoke(_targetMethod, arguments.AsSpan());
+                        0 => _invoker.Invoke(_targetMethod),
+                        1 => _invoker.Invoke(_targetMethod, scriptContext.GetArgument(_parameterTypes[0], 0)),
+                        2 => _invoker.Invoke(_targetMethod, scriptContext.GetArgument(_parameterTypes[0], 0),
+                            scriptContext.GetArgument(_parameterTypes[1], 1)),
+                        3 => _invoker.Invoke(_targetMethod, scriptContext.GetArgument(_parameterTypes[0], 0),
+                            scriptContext.GetArgument(_parameterTypes[1], 1), scriptContext.GetArgument(_parameterTypes[2], 2)),
+                        4 => _invoker.Invoke(_targetMethod, scriptContext.GetArgument(_parameterTypes[0], 0),
+                            scriptContext.GetArgument(_parameterTypes[1], 1), scriptContext.GetArgument(_parameterTypes[2], 2),
+                            scriptContext.GetArgument(_parameterTypes[3], 3)),
+                        _ => InvokeMany(scriptContext)
+                    };
 
                     if (returnObj != null)
                     {
@@ -141,6 +149,14 @@ namespace CounterStrikeSharp.API.Core
                     _taskCompletionSource.TrySetResult();
                 }
             };
+        }
+
+        private object? InvokeMany(ScriptContext context)
+        {
+            var arguments = new object?[_parameterTypes.Length];
+            for (var i = 0; i < arguments.Length; i++)
+                arguments[i] = context.GetArgument(_parameterTypes[i], i);
+            return _invoker.Invoke(_targetMethod, arguments.AsSpan());
         }
 
         public static FunctionReference Create(Delegate method, FunctionLifetime lifetime = FunctionLifetime.Permanent)

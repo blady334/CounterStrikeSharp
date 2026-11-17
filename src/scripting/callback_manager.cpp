@@ -34,7 +34,9 @@ ScriptCallback::~ScriptCallback() { m_functions.clear(); }
 
 void ScriptCallback::AddListener(CallbackT fnPluginFunction)
 {
-    if (fnPluginFunction) m_functions.push_back(std::make_shared<ListenerState>(ListenerState{fnPluginFunction}));
+    if (!fnPluginFunction) return;
+    m_functions.push_back(std::make_shared<ListenerState>(ListenerState{fnPluginFunction}));
+    m_snapshot.reset();
 }
 
 bool ScriptCallback::RemoveListener(CallbackT fnPluginFunction)
@@ -45,21 +47,29 @@ bool ScriptCallback::RemoveListener(CallbackT fnPluginFunction)
         listener->function = nullptr;
         return true;
     });
-    return m_functions.size() != nOriginalSize;
+    const bool changed = m_functions.size() != nOriginalSize;
+    if (changed) m_snapshot.reset();
+    return changed;
 }
 
 void ScriptCallback::RemoveAllListeners()
 {
     for (const auto& listener : m_functions) listener->function = nullptr;
     m_functions.clear();
+    m_snapshot.reset();
 }
 
 ScriptCallback::Snapshot ScriptCallback::GetFunctions()
 {
-    Snapshot snapshot{shared_from_this(), {}};
-    snapshot.listeners.reserve(m_functions.size());
-    for (const auto& listener : m_functions) snapshot.listeners.emplace_back(listener);
-    return snapshot;
+    if (m_functions.empty()) return Snapshot{shared_from_this(), {}};
+    if (!m_snapshot)
+    {
+        auto listeners = std::make_shared<std::vector<Listener>>();
+        listeners->reserve(m_functions.size());
+        for (const auto& listener : m_functions) listeners->emplace_back(listener);
+        m_snapshot = std::move(listeners);
+    }
+    return Snapshot{shared_from_this(), m_snapshot};
 }
 
 bool ScriptCallback::IsContextSafe()
