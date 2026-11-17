@@ -1,0 +1,79 @@
+CounterStrikeSharp 1.0.380-katujemy-stability.3 — 2026-11-17
+
+Base: stability.2, 845e919f47109c388232ccc2bee02e9b05056afd.
+All previous stability fixes remain. No live deployment or restart is automated.
+
+CALLBACK DISPATCH — adapted PR #1496
+https://github.com/roflmuffin/CounterStrikeSharp/pull/1496
+Head: f2ac76d18133ae7e7472735ac80545ffebe40117
+Cache MethodInvoker and parameter types instead of reflecting on every callback.
+Use MethodInvoker in listeners and allocate ScriptContext string cleanup queues
+only when a string actually needs unmanaged storage.
+Keep independent callback ownership from stability.1 and capability cleanup from stability.2.
+Adaptation: parameter types come from the delegate Invoke signature, not its target
+MethodInfo. Closed static and open instance delegates can have different signatures.
+Both cases fail with the original PR implementation and pass after adaptation.
+Use a weak-key invoker cache so a collectible delegate type can be unloaded.
+The PR's in-game benchmark changes were replaced with an offline benchmark that
+uses the actual reverse-P/Invoke entry and requires no fake engine entity pointers.
+
+PROFILING — adapted PR #1208
+https://github.com/roflmuffin/CounterStrikeSharp/pull/1208
+Head: 229d83de10d5820834a25d14475fd5a3ba18d938
+Eight VProf budget scopes: game frame, pre/post entity think, player think,
+CheckTransmit, generic script callbacks and pre/post game-event callbacks.
+Pre/post scopes wrap current KHook callback loops; old event-manager code is not restored.
+CheckTransmit is static in the current code, so its name must be a literal.
+ScriptCallback also uses a fixed label rather than a pointer into a temporary owner's
+string. Profiling is grouped by operation, not by individual plugin or callback name.
+Current SDK enables VProf; the scopes use the profiler's existing activation state.
+No additional console logging or automatic profiler recording was introduced.
+The expected VProf EnterScopeInternalBudgetFlags<0,false> symbol is already used
+by the supplied libserver.so and libengine2.so. Full native linking is checked in CI.
+
+SCHEMA — PR #1483
+https://github.com/roflmuffin/CounterStrikeSharp/pull/1483
+Head: 56aab1a19cf9be02b5f1bd858f35646537b78010
+Schema snapshot 1.41.9.7 (server 2000943, Nov 11 2026).
+Adds CCSGameRules.QueuedMatchmakingReportedRoundStatsPendingSend and CMapInfo.FrostEnabled.
+Schema accessors resolve field offsets at runtime; no new hardcoded gameplay offsets.
+Audited supplied Linux libserver.so SHA256:
+acc5c6c332e032c4bb2e063b267f870027e19590952570f249a0e0e06d65fc75
+CCSGameRules: size 70728; all 191 own-field offsets match the snapshot; new field 3608.
+CMapInfo: size 1984; all 16 own-field offsets match the snapshot; new field 1976.
+All 1292 generated source files reproduce exactly (normalizing line endings).
+This audit does not claim an in-process write test or a Windows engine binary audit.
+
+DEPENDENCIES — already superseded, pins retained
+PR #1462 Protobufs: proposed 128b97e33817a3b74f92590681859420f8dfcd70 is an ancestor
+of current 6c35e1ad6b5401e4f95cd0923e8145a23613516c (22 commits ahead).
+PR #1461 s2sdk: proposed 5fc47fd0abdb4ce16dac86407eb4ad0dfbd767c9 is an ancestor
+of current a508eb5ed5fb36f4067fa36a1c33f5fec7d73066 (738 commits ahead).
+PR #1457 Metamod: proposed 9c49d4c9733d94605901fb80148ea8c553f059d3 is an ancestor
+of current 170058a2f0dbd58106b7c76bfe88a94672295356 (10 commits ahead).
+These PR targets are already included in the pinned dependencies. Applying their
+gitlink updates would downgrade the build. The existing initialized checkout builds them.
+
+VALIDATION
+60 unit tests pass, including 9 new callback cases: primitive/result marshalling,
+ScriptContext, multicast, closed/open delegates, exception/single-use cleanup,
+string cleanup/reuse and collectible invoker lifetime.
+API compatibility with stability.2 passes (two additive schema properties).
+Native Windows Release build and in-game test plugin compilation pass.
+Linux CI runs unit tests, schema reproducibility, offline lifecycle and full native build.
+No in-game tests of this candidate have been performed by the agent.
+
+Offline benchmark, Windows .NET 10, median of 5 x 100000 calls after warm-up:
+Action:         265 -> 56 ns/call;   1288 -> 384 allocated bytes/call.
+Two primitives: 939 -> 249 ns/call;  1672 -> 472 allocated bytes/call.
+ScriptContext:  533 -> 107 ns/call;  1336 -> 408 allocated bytes/call.
+These are dispatch microbenchmarks, not server FPS, tick-time or player-load results.
+Profiling instrumentation overhead has not been measured in a live CS2 server.
+Reproduce the current benchmark with: dotnet run --project eng/CallbackBenchmarks -c Release
+
+INSTALL / DEV CHECK
+Stop the DEV server and back up both api/ and bin/linuxsteamrt64/counterstrikesharp.so.
+Unpack UPDATE.zip into game/csgo and start. Keep existing configs, gamedata and .NET 10.
+Check plugin startup/reload, map changes, combat events and existing Panorama menus.
+Compare frame time under similar player load; the microbenchmark is not that comparison.
+Rollback requires restoring API and .so together while the server is stopped.

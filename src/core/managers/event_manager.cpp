@@ -194,6 +194,7 @@ KHook::Return<bool> EventManager::OnFireEvent(IGameEventManager2* hookThis, IGam
     bool blocked = false;
     if (auto* callback = eventHook->m_pPreHook)
     {
+        VPROF_BUDGET("CS#::OnFireEvent", "CS# Event Hooks");
         // Stack-local contexts survive a managed callback recursively firing the
         // same event, or unregistering itself while it runs.
         auto functions = callback->GetFunctions();
@@ -227,6 +228,7 @@ KHook::Return<bool> EventManager::OnFireEvent(IGameEventManager2* hookThis, IGam
 
     if (copy && eventHook->m_pPostHook)
     {
+        VPROF_BUDGET("CS#::OnFireEventPost", "CS# Event Hooks");
         auto functions = eventHook->m_pPostHook->GetFunctions();
         for (auto function : functions)
         {

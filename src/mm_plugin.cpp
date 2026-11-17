@@ -272,7 +272,7 @@ KHook::Return<void> CounterStrikeSharpMMPlugin::Hook_GameFrame(IServerGameDLL* h
      * true  | game is ticking
      * false | game is not ticking
      */
-    // VPROF_BUDGET("CS#::Hook_GameFrame", "CS# On Frame");
+    VPROF_BUDGET("CS#::Hook_GameFrame", "CS# On Frame");
     DynamicHook::CollectRetired();
     globals::timerSystem.OnGameFrame(simulating);
 

@@ -23,6 +23,7 @@
 #include "core/cs2_sdk/entity/dump.h"
 
 #include <vector>
+#include <tier0/vprof.h>
 
 #include <engine2/ivengineserver2.h>
 #include "scripting/callback_manager.h"
@@ -228,7 +229,7 @@ KHook::Return<void> EntityManager::CheckTransmit(ISource2GameEntities* hookThis,
                                                  const uint16* pEntityIndicies,
                                                  uint32_t nEntities)
 {
-    // VPROF_BUDGET(m_profile_name.c_str(), "CS# CheckTransmit");
+    VPROF_BUDGET("CS#::EntityManager::CheckTransmit", "CS# CheckTransmit");
 
     auto callback = globals::entityManager.check_transmit;
 
