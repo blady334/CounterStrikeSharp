@@ -221,9 +221,13 @@ KHook::Return<void> CounterStrikeSharpMMPlugin::Hook_StartupServer(INetworkServe
                                                                    const char*)
 {
     globals::entitySystem = GameEntitySystem();
+    // StartupServer can run again for Workshop/HLTV without changing maps.
+    globals::entitySystem->RemoveListenerEntity(&globals::entityManager.entityListener);
     globals::entitySystem->AddListenerEntity(&globals::entityManager.entityListener);
 
-    globals::timerSystem.OnStartupServer();
+    const bool levelShutdown = m_level_shutdown_pending;
+    m_level_shutdown_pending = false;
+    globals::timerSystem.OnStartupServer(levelShutdown);
 
     on_activate_callback->ScriptContext().Reset();
     on_activate_callback->ScriptContext().Push(globals::getGlobalVars()->mapname.ToCStr());
@@ -323,6 +327,7 @@ KHook::Return<int> CounterStrikeSharpMMPlugin::Hook_LoadEventsFromFile(IGameEven
 
 void CounterStrikeSharpMMPlugin::OnLevelShutdown()
 {
+    m_level_shutdown_pending = true;
     CSSHARP_CORE_TRACE("name={0}", "LevelShutdown");
 
     if (!m_has_level_initialized)

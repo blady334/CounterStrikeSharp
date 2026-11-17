@@ -74,6 +74,7 @@ class CounterStrikeSharpMMPlugin : public ISmmPlugin, public IMetamodListener
 
   private:
     bool m_has_level_initialized = false;
+    bool m_level_shutdown_pending = false;
 };
 
 static ScriptCallback* on_activate_callback;
