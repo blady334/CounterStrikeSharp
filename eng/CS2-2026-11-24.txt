@@ -1,0 +1,25 @@
+CounterStrikeSharp 1.0.380-katujemy-stability.7
+
+The CS2 update inserts an ISource2Server virtual before WriteSignonMessages.
+The previous Linux build hooks the wrong GameFrame slot and must be replaced.
+The build applies the upstream SDK declaration patch from:
+https://github.com/roflmuffin/CounterStrikeSharp/commit/060a16f34f12a9c8a669e41308aecfd3a45fec23
+
+Only the SDK header patch and its CMake integration are adopted. The existing
+SDK dependency pin and all stability.6 changes remain intact. No optional PR
+features are added. Reconfiguration detects an already-applied patch.
+
+Audited Linux libserver build ID:
+24cd73cac54fbf032a30bf810b4a86e15ba1eca6
+SHA256: 03a9bf867f1582024e13f59810229f51bbc1158ea57de05421acf61980310a84
+
+Function bodies were compared with the prior supplied Linux binary for all
+ISource2Server methods hooked/called by this checkout. The new compiled-header
+test checks 11 member-pointer slots, including GameFrame=20, PreWorldUpdate=16,
+IsPaused=32 and GetEconItemSystem=47, without calling into the game.
+
+The update archive contains the native Linux module and matching managed API.
+Stop the server before replacing these loaded files, then start it. Preserve
+existing configs, plugins and dotnet runtime. Do not load this module against
+the older CS2 interface layout. Windows and live-server behavior are not
+validated by the Linux offline tests.

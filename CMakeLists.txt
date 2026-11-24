@@ -137,6 +137,13 @@ endif()
 # Libraries
 target_link_libraries(${PROJECT_NAME} ${COUNTER_STRIKE_SHARP_LINK_LIBRARIES} Protobufs)
 
+if(LINUX)
+    enable_testing()
+    add_executable(server-sdk-layout eng/server-sdk-layout.cpp)
+    target_link_libraries(server-sdk-layout Protobufs)
+    add_test(NAME server-sdk-layout COMMAND server-sdk-layout)
+endif()
+
 add_custom_command(
     TARGET ${PROJECT_NAME} PRE_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory
